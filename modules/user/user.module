@@ -286,7 +286,7 @@ function user_save($account, $array = array(), $category = 'account') {
     if (!empty($array['pass'])) {
       sess_destroy_uid($account->uid);
       if ($account->uid == $GLOBALS['user']->uid) {
-        sess_regenerate();
+        drupal_session_regenerate();
       }
     }
 
@@ -1421,7 +1421,7 @@ function user_authenticate_finalize(&$edit) {
   db_query("UPDATE {users} SET login = %d WHERE uid = %d", $user->login, $user->uid);
 
   // Regenerate the session ID to prevent against session fixation attacks.
-  sess_regenerate();
+  drupal_session_regenerate();
   user_module_invoke('login', $edit, $user);
 }
 

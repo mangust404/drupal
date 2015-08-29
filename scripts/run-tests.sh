@@ -30,11 +30,13 @@ if ($args['execute-batch']) {
 }
 else {
   // Run administrative functions as CLI.
-  simpletest_script_init("PHP CLI");
+  simpletest_script_init(NULL);
 }
 
 // Bootstrap to perform initial validation or other operations.
 drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
+ob_end_flush();
+
 if (!module_exists('simpletest')) {
   simpletest_script_print_error("The simpletest module must be enabled before this script can run.");
   exit;

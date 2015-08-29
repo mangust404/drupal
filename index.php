@@ -11,6 +11,9 @@
  * See COPYRIGHT.txt and LICENSE.txt.
  */
 
+// backport from D7
+define('DRUPAL_ROOT', getcwd());
+
 require_once './includes/bootstrap.inc';
 drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
 

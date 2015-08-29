@@ -1685,11 +1685,18 @@ function l($text, $path, $options = array()) {
  * react to the closing of the page by calling hook_exit().
  */
 function drupal_page_footer() {
-  if (variable_get('cache', CACHE_DISABLED) != CACHE_DISABLED) {
-    page_set_cache();
+  module_invoke_all('exit');
+
+  // Commit the user session, if needed.
+  drupal_session_commit();
+
+  if (variable_get('cache', 0) && ($cache = drupal_page_set_cache())) {
+    drupal_serve_page_from_cache($cache);
+  }
+  else {
+    ob_flush();
   }
 
-  module_invoke_all('exit');
 }
 
 /**
@@ -2766,7 +2773,7 @@ function _drupal_bootstrap_full() {
 }
 
 /**
- * Store the current page in the cache.
+ * Stores the current page in the cache. Backport from D7
  *
  * If page_compression is enabled, a gzipped version of the page is stored in
  * the cache to avoid compressing the output on each request. The cache entry
@@ -2774,22 +2781,51 @@ function _drupal_bootstrap_full() {
  * client without gzip support.
  *
  * Page compression requires the PHP zlib extension
- * (http://php.net/manual/en/ref.zlib.php).
+ * (http://php.net/manual/ref.zlib.php).
  *
- * @see drupal_page_header
+ * @see drupal_page_header()
  */
-function page_set_cache() {
-  global $user, $base_root;
+function drupal_page_set_cache() {
+  global $base_root;
 
-  if (!$user->uid && $_SERVER['REQUEST_METHOD'] == 'GET' && page_get_cache(TRUE)) {
-    // This will fail in some cases, see page_get_cache() for the explanation.
-    if ($data = ob_get_contents()) {
-      if (variable_get('page_compression', TRUE) && extension_loaded('zlib')) {
-        $data = gzencode($data, 9, FORCE_GZIP);
+  if (drupal_page_is_cacheable()) {
+
+    // Check whether the current page might be compressed.
+    $page_compressed = variable_get('page_compression', TRUE) && extension_loaded('zlib');
+
+    $cache = (object) array(
+      'cid' => $base_root . request_uri(),
+      'data' => array(
+        'path' => $_GET['q'],
+        'body' => ob_get_clean(),
+        'title' => drupal_get_title(),
+        'headers' => array(),
+        // We need to store whether page was compressed or not,
+        // because by the time it is read, the configuration might change.
+        'page_compressed' => $page_compressed,
+      ),
+      'expire' => CACHE_TEMPORARY,
+      'created' => REQUEST_TIME,
+    );
+
+    // Restore preferred header names based on the lower-case names returned
+    // by drupal_get_http_header().
+    $header_names = _drupal_set_preferred_header_name();
+    foreach (drupal_get_http_header() as $name_lower => $value) {
+      $cache->data['headers'][$header_names[$name_lower]] = $value;
+      if ($name_lower == 'expires') {
+        // Use the actual timestamp from an Expires header if available.
+        $cache->expire = strtotime($value);
       }
-      ob_end_flush();
-      cache_set($base_root . request_uri(), $data, 'cache_page', CACHE_TEMPORARY, drupal_get_headers());
     }
+
+    if ($cache->data['body']) {
+      if ($page_compressed) {
+        $cache->data['body'] = gzencode($cache->data['body'], 9, FORCE_GZIP);
+      }
+      cache_set($cache->cid, $cache->data, 'cache_page', $cache->expire);
+    }
+    return $cache;
   }
 }
 
