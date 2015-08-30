@@ -3,3 +3,4 @@
 - Backported tests:
   - Bootstrap (almost all bootstrap functions are from D7)
   - Module system
+  - Default caching system
