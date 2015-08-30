@@ -144,6 +144,9 @@ All arguments are long options.
 
   --class     Run tests identified by specific class names, instead of group names.
 
+  --class     Run tests identified by method name or by class name either.
+              A part of the name and lowercase also works.
+
   --file      Run tests identified by specific file names, instead of group names.
               Specify the path and the extension (i.e. 'modules/user/user.test').
 
@@ -190,6 +193,7 @@ function simpletest_script_parse_args() {
     'concurrency' => 1,
     'all' => FALSE,
     'class' => FALSE,
+    'name' => '',
     'file' => FALSE,
     'color' => FALSE,
     'verbose' => FALSE,
@@ -367,10 +371,20 @@ function simpletest_script_run_one_test($test_id, $test_class) {
   // Drupal 6.
   require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
   $classes = simpletest_test_get_all_classes();
-  require_once $classes[$test_class]['file'];
+  if(strpos($test_class, '::') !== FALSE) {
+    // Run single method
+    list($class, $method) = explode('::', $test_class);
+    require_once $classes[$class]['file'];
 
-  $test = new $test_class($test_id);
-  $test->run();
+    $test = new $class($test_id);
+    $test->run($method);
+  } else {
+    require_once $classes[$test_class]['file'];
+
+    $test = new $test_class($test_id);
+    $test->run();
+  }
+  
   $info = $test->getInfo();
 
   $status = ((isset($test->results['#fail']) && $test->results['#fail'] > 0)
@@ -432,6 +446,20 @@ function simpletest_script_get_test_list() {
           if (isset($files[$refclass->getFileName()])) {
             $test_list[] = $class_name;
           }
+        }
+      }
+    }
+    elseif (!empty($args['name'])) {
+      require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
+      foreach(simpletest_test_get_all_classes() as $class => $info) {
+        require_once($info['file']);
+        foreach(get_class_methods($class) as $method) {
+          if(stripos($method, 'test') === 0 && stripos($method, $args['name']) !== FALSE) {
+            $test_list[] = $class . '::' . $method;
+          }
+        }
+        if(stripos($class, $args['name']) !== FALSE) {
+          $test_list[] = $class;
         }
       }
     }
