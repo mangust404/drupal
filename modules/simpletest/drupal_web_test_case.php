@@ -100,7 +100,7 @@ abstract class DrupalTestCase {
    *   the name of the source file, 'line' is the line number and 'function'
    *   is the caller function itself.
    */
-  protected function assert($status, $message = '', $group = 'Other', array $caller = NULL) {
+  protected function assert($status, $message = '', $group = 'Other', array $caller = NULL, $message_on_fail = NULL) {
     global $db_prefix;
 
     // Convert boolean status to string status.
@@ -119,6 +119,11 @@ abstract class DrupalTestCase {
     // Switch to non-testing database to store results in.
     $current_db_prefix = $db_prefix;
     $db_prefix = $this->originalPrefix;
+
+    // Add additional info if assertion is failed
+    if($status == 'fail' && !empty($message_on_fail)) {
+      $message .= "\n" . $message_on_fail . "\n\n";
+    }
 
     // Creation assertion array that can be displayed while tests are running.
     $this->assertions[] = $assertion = array(
@@ -230,7 +235,7 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertTrue($value, $message = '', $group = 'Other') {
-    return $this->assert((bool) $value, $message ? $message : t('Value is TRUE'), $group);
+    return $this->assert((bool) $value, $message ? $message : t('Value is TRUE'), $group, NULL, t("Expected value '@value' to be TRUE.", array('@value' => var_export($value, TRUE))));
   }
 
   /**
@@ -246,7 +251,7 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertFalse($value, $message = '', $group = 'Other') {
-    return $this->assert(!$value, $message ? $message : t('Value is FALSE'), $group);
+    return $this->assert(!$value, $message ? $message : t('Value is FALSE'), $group, NULL, t("Expected value '@value' to be FALSE.", array('@value' => var_export($value, TRUE))));
   }
 
   /**
@@ -262,7 +267,7 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertNull($value, $message = '', $group = 'Other') {
-    return $this->assert(!isset($value), $message ? $message : t('Value is NULL'), $group);
+    return $this->assert(!isset($value), $message ? $message : t('Value is NULL'), $group, NULL, t("Expected @value to be NULL.", array('@value' => var_export($value, TRUE))));
   }
 
   /**
@@ -278,7 +283,36 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertNotNull($value, $message = '', $group = 'Other') {
-    return $this->assert(isset($value), $message ? $message : t('Value is not NULL'), $group);
+    return $this->assert(isset($value), $message ? $message : t('Value is not NULL'), $group, NULL, t("Expected @value to be NOT NULL.", array('@value' => var_export($value, TRUE))));
+  }
+
+  protected function getEqualityMessage($first, $second) {
+    if(is_array($first)) {
+      $message = t("Expected @first to match second array", array('@first' => var_export($first, TRUE)));
+
+      if(!is_array($second)) {
+        return $message . t(' and second parameter is not an array');
+      }
+
+      $message .= "\n\n";
+
+      $extra = array_diff($second, $first);
+      $missing = array_diff($first, $second);
+
+      if(count($extra) > 0) {
+        $message .= "Extra elements in second array: \n + '" . implode("'\n + '", $extra) . "'\n\n";
+      }
+      if(count($missing) > 0) {
+        $message .= "Not found in second array: \n - '" . implode("'\n - '", $missing) . "'\n\n";
+      }
+
+      if(empty($extra) && empty($missing)) {
+        $message .= var_export($second, TRUE);
+      }
+      return $message;
+    } else {
+      return t("Expected: @first\n but got: \n @second.", array('@first' => var_export($first, TRUE), '@second' => var_export($second, TRUE)));
+    }
   }
 
   /**
@@ -296,7 +330,8 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertEqual($first, $second, $message = '', $group = 'Other') {
-    return $this->assert($first == $second, $message ? $message : t('First value is equal to second value'), $group);
+    $result = $first == $second;
+    return $this->assert($result, $message ? $message : t('First value is equal to second value'), $group, NULL, $result? NULL: $this->getEqualityMessage($first, $second));
   }
 
   /**
@@ -314,7 +349,7 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertNotEqual($first, $second, $message = '', $group = 'Other') {
-    return $this->assert($first != $second, $message ? $message : t('First value is not equal to second value'), $group);
+    return $this->assert($first != $second, $message ? $message : t('First value is not equal to second value'), $group, NULL, t("Expected: @first\n not to be equal as\n @second.", array('@first' => var_export($first, TRUE), '@second' => var_export($second, TRUE))));
   }
 
   /**
@@ -332,7 +367,8 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertIdentical($first, $second, $message = '', $group = 'Other') {
-    return $this->assert($first === $second, $message ? $message : t('First value is identical to second value'), $group);
+    $result = $first === $second;
+    return $this->assert($result, $message ? $message : t('First value is identical to second value'), $group, NULL, $result? NULL: $this->getEqualityMessage($first, $second));
   }
 
   /**
@@ -350,7 +386,7 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertNotIdentical($first, $second, $message = '', $group = 'Other') {
-    return $this->assert($first !== $second, $message ? $message : t('First value is not identical to second value'), $group);
+    return $this->assert($first !== $second, $message ? $message : t('First value is not identical to second value'), $group, NULL, t("Expected: @first\n but got: \n @second.", array('@first' => var_export($first, TRUE), '@second' => var_export($second, TRUE))));
   }
 
   /**
@@ -1118,11 +1154,12 @@ class DrupalWebTestCase extends DrupalTestCase {
 //    // Include the default profile
 //    variable_set('install_profile', 'default');
 //    $profile_details = install_profile_info('default', 'en');
+    //module_rebuild_cache();
 
     // Add the specified modules to the list of modules in the default profile.
     // Install the modules specified by the default profile.
 //    drupal_install_modules($profile_details['dependencies'], TRUE);
-    drupal_install_modules(drupal_verify_profile('default', 'en'));
+    module_enable(drupal_verify_profile('default', 'en'));
 
 //    node_type_clear();
 
@@ -1131,14 +1168,17 @@ class DrupalWebTestCase extends DrupalTestCase {
     $modules = func_get_args();
     foreach ($modules as $module) {
 //      drupal_install_modules(array($module), TRUE);
-      drupal_install_modules(array($module));
+      module_enable(array($module));
     }
+
+    // Reset/rebuild all data structures after enabling the modules.
+    $this->resetAll();
 
     // Because the schema is static cached, we need to flush
     // it between each run. If we don't, then it will contain
     // stale data for the previous run's database prefix and all
     // calls to it will fail.
-    drupal_get_schema(NULL, TRUE);
+    //drupal_get_schema(NULL, TRUE);
 
     // Run default profile tasks.
 //    $install_state = array();
@@ -1204,6 +1244,32 @@ class DrupalWebTestCase extends DrupalTestCase {
 //    db_query('INSERT INTO {registry} SELECT * FROM ' . $this->originalPrefix . 'registry');
 //    db_query('INSERT INTO {registry_file} SELECT * FROM ' . $this->originalPrefix . 'registry_file');
 //  }
+
+  /**
+   * Reset all data structures after having enabled new modules. Backport from D7
+   *
+   * This method is called by DrupalWebTestCase::setUp() after enabling
+   * the requested modules. It must be called again when additional modules
+   * are enabled later.
+   */
+  protected function resetAll() {
+    // Reset all static variables.
+    drupal_static_reset();
+    // Reset the list of enabled modules.
+    module_list(TRUE, FALSE);
+
+    // Reset cached schema for new database prefix. This must be done before
+    // drupal_flush_all_caches() so rebuilds can make use of the schema of
+    // modules enabled on the cURL side.
+    drupal_get_schema(NULL, TRUE);
+
+    // Perform rebuilds and flush remaining caches.
+    drupal_flush_all_caches();
+
+    // Reload global $conf array and permissions.
+    $this->refreshVariables();
+    $this->checkPermissions(array(), TRUE);
+  }
 
   /**
    * Refresh the in-memory set of variables. Useful after a page request is made
@@ -1276,7 +1342,7 @@ class DrupalWebTestCase extends DrupalTestCase {
 
       // Reload module list and implementations to ensure that test module hooks
       // aren't called after tests.
-      module_list(TRUE);
+      module_list(TRUE, FALSE);
 //      module_implements('', FALSE, TRUE);
       module_implements('', '', TRUE);
 
@@ -2051,7 +2117,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     if (!$message) {
       $message = t('Raw "@raw" found', array('@raw' => check_plain($raw)));
     }
-    return $this->assert(strpos($this->content, $raw) !== FALSE, $message, $group);
+    return $this->assert(strpos($this->content, $raw) !== FALSE, $message, $group, NULL, t("Expected \"@content\"\nto match \"@raw\"", array('@raw' => $raw, '@content' => $this->content)));
   }
 
   /**
@@ -2071,7 +2137,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     if (!$message) {
       $message = t('Raw "@raw" not found', array('@raw' => check_plain($raw)));
     }
-    return $this->assert(strpos($this->content, $raw) === FALSE, $message, $group);
+    return $this->assert(strpos($this->content, $raw) === FALSE, $message, $group, NULL, t("Expected \"@content\"\n\n not to match \"@raw\"", array('@raw' => $raw, '@content' => $this->content)));
   }
 
   /**
@@ -2130,10 +2196,21 @@ class DrupalWebTestCase extends DrupalTestCase {
     if ($this->plainTextContent === FALSE) {
       $this->plainTextContent = filter_xss($this->content, array());
     }
+    $result = $not_exists == (strpos($this->plainTextContent, $text) === FALSE);
     if (!$message) {
       $message = !$not_exists ? t('"@text" found', array('@text' => $text)) : t('"@text" not found', array('@text' => $text));
+
+       
     }
-    return $this->assert($not_exists == (strpos($this->plainTextContent, $text) === FALSE), $message, $group);
+    $message_on_fail = NULL;
+    if(!$result) {
+      if($not_exists) {
+        $message_on_fail = t("Expected \"@text\"\n not to match string \"@search\"", array('@search' => $text, '@text' => $this->plainTextContent));
+      } else {
+        $message_on_fail = t("Expected \"@text\"\n to match string \"@search\"", array('@search' => $text, '@text' => $this->plainTextContent));
+      }
+    }
+    return $this->assert($result, $message, $group, NULL, $message_on_fail);
   }
 
   /**

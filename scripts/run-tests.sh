@@ -529,6 +529,9 @@ function simpletest_script_reporter_display_results() {
   }
 }
 
+function simpletest_prettify_message($input) {
+  return html_entity_decode(preg_replace_callback("/(&#[0-9]+;)/", function($m) { return mb_convert_encoding($m[1], "UTF-8", "HTML-ENTITIES"); }, $input)); 
+}
 /**
  * Format the result so that it fits within the default 80 character
  * terminal size.
@@ -543,10 +546,15 @@ function simpletest_script_format_result($result) {
 
   simpletest_script_print($summary, simpletest_script_color_code($result->status));
 
-  $lines = explode("\n", wordwrap(trim(strip_tags($result->message)), 76));
-  foreach ($lines as $line) {
-    echo "    $line\n";
+  $lines = explode("\n", $result->message);
+  $first_line = wordwrap(trim(strip_tags(array_shift($lines))), 76);
+  echo "    $first_line\n";
+
+  $lines = explode("\n", wordwrap(trim(strip_tags(implode("\n", $lines))), 76));
+  foreach ($lines as $i => $line) {
+    simpletest_script_print("    " . simpletest_prettify_message($line) . "\n", simpletest_script_color_code($result->status));
   }
+  print "\n";
 }
 
 /**
