@@ -144,8 +144,9 @@ All arguments are long options.
 
   --class     Run tests identified by specific class names, instead of group names.
 
-  --class     Run tests identified by method name or by class name either.
-              A part of the name and lowercase also works.
+  --name      Run tests identified by method name or by class name either.
+              A part of the name and lowercase also works. You can also specify
+              full test name as "MyTestCaseClass::testMyMethod"
 
   --file      Run tests identified by specific file names, instead of group names.
               Specify the path and the extension (i.e. 'modules/user/user.test').
@@ -451,6 +452,16 @@ function simpletest_script_get_test_list() {
     }
     elseif (!empty($args['name'])) {
       require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
+      if(strpos($args['name'], '::') !== FALSE) {
+        list($class, $method) = explode('::', $args['name']);
+        $all = simpletest_test_get_all_classes();
+        if(isset($all[$class])) {
+          require_once($all[$class]['file']);
+          if(method_exists(new $class, $method)) {
+            $test_list[] = $class . '::' . $method;
+          }
+        }
+      }
       foreach(simpletest_test_get_all_classes() as $class => $info) {
         require_once($info['file']);
         foreach(get_class_methods($class) as $method) {
