@@ -296,6 +296,9 @@ abstract class DrupalTestCase {
 
       $message .= "\n\n";
 
+      $first = explode("\n", var_export($first, TRUE));
+      $second = explode("\n", var_export($second, TRUE));
+
       $extra = array_diff($second, $first);
       $missing = array_diff($first, $second);
 
@@ -311,7 +314,16 @@ abstract class DrupalTestCase {
       }
       return $message;
     } else {
-      return t("Expected: @first\n but got: \n @second.", array('@first' => var_export($first, TRUE), '@second' => var_export($second, TRUE)));
+      $first = var_export($first, TRUE);
+      if(strlen($first) > 2048) {
+        $first = substr($first, 0, 2048) . '... (' . (strlen($first) - 2048) . ' chars)';
+      }
+      $second = var_export($second, TRUE);
+      if(strlen($second) > 2048) {
+        $second = substr($second, 0, 2048) . '... (' . (strlen($second) - 2048) . ' chars)';
+      }
+
+      return t("Expected: @first\n but got: \n @second.", array('@first' => $first, '@second' => $second));
     }
   }
 
