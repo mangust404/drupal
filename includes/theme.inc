@@ -248,6 +248,17 @@ function _theme_save_registry($theme, $registry) {
 }
 
 /**
+ * Forces the system to rebuild the theme registry. Backport from D7
+ *
+ * This function should be called when modules are added to the system, or when
+ * a dynamic system needs to add more theme hooks.
+ */
+function drupal_theme_rebuild() {
+  drupal_static_reset('theme_get_registry');
+  cache_clear_all('theme_registry', 'cache', TRUE);
+}
+
+/**
  * Force the system to rebuild the theme registry; this should be called
  * when modules are added to the system, or when a dynamic system needs
  * to add more theme hooks.

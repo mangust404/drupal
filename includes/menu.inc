@@ -1721,26 +1721,23 @@ function menu_rebuild() {
  * Collect, alter and store the menu definitions.
  */
 function menu_router_build($reset = FALSE) {
-  static $menu;
-
-  if (!isset($menu) || $reset) {
-    // We need to manually call each module so that we can know which module
-    // a given item came from.
-    $callbacks = array();
-    foreach (module_implements('menu') as $module) {
-      $router_items = call_user_func($module .'_menu');
-      if (isset($router_items) && is_array($router_items)) {
-        foreach (array_keys($router_items) as $path) {
-          $router_items[$path]['module'] = $module;
-        }
-        $callbacks = array_merge($callbacks, $router_items);
+  // We need to manually call each module so that we can know which module
+  // a given item came from.
+  $callbacks = array();
+  foreach (module_implements('menu') as $module) {
+    $router_items = call_user_func($module .'_menu');
+    if (isset($router_items) && is_array($router_items)) {
+      foreach (array_keys($router_items) as $path) {
+        $router_items[$path]['module'] = $module;
       }
+      $callbacks = array_merge($callbacks, $router_items);
     }
-    // Alter the menu as defined in modules, keys are like user/%user.
-    drupal_alter('menu', $callbacks);
-    $menu = _menu_router_build($callbacks);
-    _menu_router_cache($menu);
   }
+  // Alter the menu as defined in modules, keys are like user/%user.
+  drupal_alter('menu', $callbacks);
+  $menu = _menu_router_build($callbacks);
+  _menu_router_cache($menu);
+
   return $menu;
 }
 

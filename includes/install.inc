@@ -74,16 +74,19 @@ function drupal_get_installed_schema_version($module, $reset = FALSE, $array = F
   if ($reset) {
     $versions = array();
   }
-
-  if (!$versions) {
+  if (empty($versions)) {
     $versions = array();
     $result = db_query("SELECT name, schema_version FROM {system} WHERE type = '%s'", 'module');
     while ($row = db_fetch_object($result)) {
       $versions[$row->name] = $row->schema_version;
     }
   }
-
-  return $array ? $versions : $versions[$module];
+  if ($array) {
+    return $versions;
+  }
+  else {
+    return isset($versions[$module]) ? $versions[$module] : SCHEMA_UNINSTALLED;
+  }
 }
 
 /**
@@ -96,6 +99,8 @@ function drupal_get_installed_schema_version($module, $reset = FALSE, $array = F
  */
 function drupal_set_installed_schema_version($module, $version) {
   db_query("UPDATE {system} SET schema_version = %d WHERE name = '%s'", $version, $module);
+  // Reset the static cache of module schema versions.
+  drupal_get_installed_schema_version(NULL, TRUE);
 }
 
 /**
@@ -326,7 +331,9 @@ function drupal_install_modules($module_list = array()) {
   } while ($moved);
   asort($module_list);
   $module_list = array_keys($module_list);
+
   array_filter($module_list, '_drupal_install_module');
+
   module_enable($module_list);
 }
 
@@ -354,9 +361,10 @@ function _drupal_install_module($module) {
  * functions can be made available while other modules are installed.
  */
 function drupal_install_system() {
-  $system_path = dirname(drupal_get_filename('module', 'system', NULL));
-  require_once './'. $system_path .'/system.install';
+  $system_path = drupal_get_path('module', 'system');
+  require_once DRUPAL_ROOT . '/' . $system_path . '/system.install';
   module_invoke('system', 'install');
+
   $system_versions = drupal_get_schema_versions('system');
   $system_version = $system_versions ? max($system_versions) : SCHEMA_INSTALLED;
   db_query("INSERT INTO {system} (filename, name, type, owner, status, throttle, bootstrap, schema_version) VALUES('%s', '%s', '%s', '%s', %d, %d, %d, %d)", $system_path .'/system.module', 'system', 'module', '', 1, 0, 0, $system_version);
@@ -373,38 +381,82 @@ function drupal_install_system() {
  *   The module to uninstall.
  */
 function drupal_uninstall_module($module) {
-  // First, retrieve all the module's menu paths from db.
-  drupal_load('module', $module);
-  $paths = module_invoke($module, 'menu');
+  // Backward compatibility with D6
+  return drupal_uninstall_modules(array($module));
+}
 
-  // Uninstall the module(s).
-  module_load_install($module);
-  module_invoke($module, 'uninstall');
+/**
+ * Uninstalls a given list of disabled modules.
+ *
+ * @param array $module_list
+ *   The modules to uninstall. It is the caller's responsibility to ensure that
+ *   all modules in this list have already been disabled before this function
+ *   is called.
+ * @param bool $uninstall_dependents
+ *   (optional) If TRUE, the function will check that all modules which depend
+ *   on the passed-in module list either are already uninstalled or contained in
+ *   the list, and it will ensure that the modules are uninstalled in the
+ *   correct order. This incurs a significant performance cost, so use FALSE if
+ *   you know $module_list is already complete and in the correct order.
+ *   Defaults to TRUE.
+ *
+ * @return bool
+ *   Returns TRUE if the operation succeeds or FALSE if it aborts due to an
+ *   unsafe condition, namely, $uninstall_dependents is TRUE and a module in
+ *   $module_list has dependents which are not already uninstalled and not also
+ *   included in $module_list).
+ *
+ * @see module_disable()
+ */
+function drupal_uninstall_modules($module_list = array(), $uninstall_dependents = TRUE) {
+  if ($uninstall_dependents) {
+    // Get all module data so we can find dependents and sort.
+    $module_data = system_rebuild_module_data();
+    // Create an associative array with weights as values.
+    $module_list = array_flip(array_values($module_list));
 
-  // Now remove the menu links for all paths declared by this module.
-  if (!empty($paths)) {
-    $paths = array_keys($paths);
-    // Clean out the names of load functions.
-    foreach ($paths as $index => $path) {
-      $parts = explode('/', $path, MENU_MAX_PARTS);
-      foreach ($parts as $k => $part) {
-        if (preg_match('/^%[a-z_]*$/', $part)) {
-          $parts[$k] = '%';
+    $profile = drupal_get_profile();
+    while (list($module) = each($module_list)) {
+      if (!isset($module_data[$module]) || drupal_get_installed_schema_version($module) == SCHEMA_UNINSTALLED) {
+        // This module doesn't exist or is already uninstalled. Skip it.
+        unset($module_list[$module]);
+        continue;
+      }
+      $module_list[$module] = $module_data[$module]->sort;
+
+      // If the module has any dependents which are not already uninstalled and
+      // not included in the passed-in list, abort. It is not safe to uninstall
+      // them automatically because uninstalling a module is a destructive
+      // operation.
+      foreach (array_keys($module_data[$module]->required_by) as $dependent) {
+        if (!isset($module_list[$dependent]) && drupal_get_installed_schema_version($dependent) != SCHEMA_UNINSTALLED && $dependent != $profile) {
+          return FALSE;
         }
       }
-      $paths[$index] = implode('/', $parts);
     }
-    $placeholders = implode(', ', array_fill(0, count($paths), "'%s'"));
 
-    $result = db_query('SELECT * FROM {menu_links} WHERE router_path IN ('. $placeholders .') AND external = 0 ORDER BY depth DESC', $paths);
-    // Remove all such items. Starting from those with the greatest depth will
-    // minimize the amount of re-parenting done by menu_link_delete().
-    while ($item = db_fetch_array($result)) {
-      _menu_delete_item($item, TRUE);
-    }
+    // Sort the module list by pre-calculated weights.
+    asort($module_list);
+    $module_list = array_keys($module_list);
   }
 
-  drupal_set_installed_schema_version($module, SCHEMA_UNINSTALLED);
+  foreach ($module_list as $module) {
+    // Uninstall the module.
+    module_load_install($module);
+    module_invoke($module, 'uninstall');
+    // D6 modules should remove their schema by their own
+    //drupal_uninstall_schema($module);
+
+    watchdog('system', '%module module uninstalled.', array('%module' => $module), WATCHDOG_INFO);
+    drupal_set_installed_schema_version($module, SCHEMA_UNINSTALLED);
+  }
+
+  if (!empty($module_list)) {
+    // Let other modules react.
+    module_invoke_all('modules_uninstalled', $module_list);
+  }
+
+  return TRUE;
 }
 
 /**
@@ -692,6 +744,82 @@ function drupal_check_profile($profile) {
     }
   }
   return $requirements;
+}
+
+/**
+ * Retrieves information about an installation profile from its .info file. Backport from D7
+ *
+ * The information stored in a profile .info file is similar to that stored in
+ * a normal Drupal module .info file. For example:
+ * - name: The real name of the installation profile for display purposes.
+ * - description: A brief description of the profile.
+ * - dependencies: An array of shortnames of other modules that this install
+ *   profile requires.
+ *
+ * Additional, less commonly-used information that can appear in a profile.info
+ * file but not in a normal Drupal module .info file includes:
+ * - distribution_name: The name of the Drupal distribution that is being
+ *   installed, to be shown throughout the installation process. Defaults to
+ *   'Drupal'.
+ * - exclusive: If the install profile is intended to be the only eligible
+ *   choice in a distribution, setting exclusive = TRUE will auto-select it
+ *   during installation, and the install profile selection screen will be
+ *   skipped. If more than one profile is found where exclusive = TRUE then
+ *   this property will have no effect and the profile selection screen will
+ *   be shown as normal with all available profiles shown.
+ *
+ * Note that this function does an expensive file system scan to get info file
+ * information for dependencies. If you only need information from the info
+ * file itself, use system_get_info().
+ *
+ * Example of .info file:
+ * @code
+ *    name = Minimal
+ *    description = Start fresh, with only a few modules enabled.
+ *    dependencies[] = block
+ *    dependencies[] = dblog
+ * @endcode
+ *
+ * @param $profile
+ *   Name of profile.
+ * @param $locale
+ *   Name of locale used (if any).
+ *
+ * @return
+ *   The info array.
+ */
+function install_profile_info($profile, $locale = 'en') {
+  $cache = &drupal_static(__FUNCTION__, array());
+
+  if (!isset($cache[$profile])) {
+    // Set defaults for module info.
+    $defaults = array(
+      'dependencies' => array(),
+      'description' => '',
+      'distribution_name' => 'Drupal',
+      'version' => NULL,
+      'hidden' => FALSE,
+      'php' => DRUPAL_MINIMUM_PHP,
+    );
+    $info = drupal_parse_info_file("profiles/$profile/$profile.info") + $defaults;
+    $info['dependencies'] = array_unique(array_merge(
+      drupal_required_modules(),
+      $info['dependencies'],
+      ($locale != 'en' && !empty($locale) ? array('locale') : array()))
+    );
+
+    // Using D6 format
+    require_once "profiles/$profile/$profile.profile";
+    $func = "{$profile}_profile_modules";
+    if(function_exists($func)) {
+      $info['dependencies'] = array_unique(array_merge($info['dependencies'], $func()));
+    }
+    
+    asort($info['dependencies']);
+
+    $cache[$profile] = $info;
+  }
+  return $cache[$profile];
 }
 
 /**

@@ -6,6 +6,41 @@
  */
 
 /**
+ * The current system version.
+ */
+define('VERSION', '6.38-dev');
+
+/**
+ * Core API compatibility.
+ */
+define('DRUPAL_CORE_COMPATIBILITY', '6.x');
+
+/**
+ * Minimum supported version of PHP.
+ */
+define('DRUPAL_MINIMUM_PHP',    '5.2.4');
+
+/**
+ * Minimum recommended value of PHP memory_limit.
+ */
+define('DRUPAL_MINIMUM_PHP_MEMORY_LIMIT',    '16M');
+
+/**
+ * Minimum supported version of MySQL, if it is used.
+ */
+define('DRUPAL_MINIMUM_MYSQL',  '4.1.1');
+
+/**
+ * Minimum supported version of PostgreSQL, if it is used.
+ */
+define('DRUPAL_MINIMUM_PGSQL',  '7.4');
+
+/**
+ * Maximum age of temporary files in seconds.
+ */
+define('DRUPAL_MAXIMUM_TEMP_FILE_AGE', 21600);
+
+/**
  * Indicates that the item should never be removed unless explicitly told to
  * using cache_clear_all() with a cache ID.
  */
@@ -229,6 +264,13 @@ if (defined('E_DEPRECATED')) {
  * @see http://php.net/manual/function.time.php
  */
 define('REQUEST_TIME', (int) $_SERVER['REQUEST_TIME']);
+
+/**
+ * Regular expression to match PHP function names.
+ *
+ * @see http://php.net/manual/language.functions.php
+ */
+define('DRUPAL_PHP_FUNCTION_PATTERN', '[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*');
 
 /**
  * A RFC7231 Compliant date. Backport from D7
@@ -1104,6 +1146,61 @@ function drupal_unpack($obj, $field = 'data') {
 }
 
 /**
+ * Formats a string for HTML display by replacing variable placeholders. Backport from D7
+ *
+ * This function replaces variable placeholders in a string with the requested
+ * values and escapes the values so they can be safely displayed as HTML. It
+ * should be used on any unknown text that is intended to be printed to an HTML
+ * page (especially text that may have come from untrusted users, since in that
+ * case it prevents cross-site scripting and other security problems).
+ *
+ * In most cases, you should use t() rather than calling this function
+ * directly, since it will translate the text (on non-English-only sites) in
+ * addition to formatting it.
+ *
+ * @param $string
+ *   A string containing placeholders.
+ * @param $args
+ *   An associative array of replacements to make. Occurrences in $string of
+ *   any key in $args are replaced with the corresponding value, after optional
+ *   sanitization and formatting. The type of sanitization and formatting
+ *   depends on the first character of the key:
+ *   - @variable: Escaped to HTML using check_plain(). Use this as the default
+ *     choice for anything displayed on a page on the site.
+ *   - %variable: Escaped to HTML and formatted using drupal_placeholder(),
+ *     which makes it display as <em>emphasized</em> text.
+ *   - !variable: Inserted as is, with no sanitization or formatting. Only use
+ *     this for text that has already been prepared for HTML display (for
+ *     example, user-supplied text that has already been run through
+ *     check_plain() previously, or is expected to contain some limited HTML
+ *     tags and has already been run through filter_xss() previously).
+ *
+ * @see t()
+ * @ingroup sanitization
+ */
+function format_string($string, array $args = array()) {
+  // Transform arguments before inserting them.
+  foreach ($args as $key => $value) {
+    switch ($key[0]) {
+      case '@':
+        // Escaped only.
+        $args[$key] = check_plain($value);
+        break;
+
+      case '%':
+      default:
+        // Escaped and placeholder.
+        $args[$key] = drupal_placeholder($value);
+        break;
+
+      case '!':
+        // Pass-through.
+    }
+  }
+  return strtr($string, $args);
+}
+
+/**
  * Return the URI of the referring page.
  */
 function referer_uri() {
@@ -1413,7 +1510,7 @@ function drupal_anonymous_user($session = '') {
  *     DRUPAL_BOOTSTRAP_PATH: set $_GET['q'] to Drupal path of request.
  *     DRUPAL_BOOTSTRAP_FULL: Drupal is fully loaded, validate and fix input data.
  */
-function drupal_bootstrap($phase) {
+function drupal_bootstrap($phase = NULL) {
   static $phases = array(DRUPAL_BOOTSTRAP_CONFIGURATION, DRUPAL_BOOTSTRAP_EARLY_PAGE_CACHE, DRUPAL_BOOTSTRAP_DATABASE, DRUPAL_BOOTSTRAP_ACCESS, DRUPAL_BOOTSTRAP_SESSION, DRUPAL_BOOTSTRAP_LATE_PAGE_CACHE, DRUPAL_BOOTSTRAP_LANGUAGE, DRUPAL_BOOTSTRAP_PATH, DRUPAL_BOOTSTRAP_FULL), $phase_index = 0;
 
   while ($phase >= $phase_index && isset($phases[$phase_index])) {
@@ -1421,6 +1518,8 @@ function drupal_bootstrap($phase) {
     unset($phases[$phase_index++]);
     _drupal_bootstrap($current_phase);
   }
+
+  return $phase_index;
 }
 
 function _drupal_bootstrap($phase) {
@@ -1590,6 +1689,19 @@ function drupal_get_user_timezone() {
     // configuration.
     return variable_get('date_default_timezone', @date_default_timezone_get());
   }
+}
+
+/**
+ * Gets a salt useful for hardening against SQL injection. Backport from D7
+ *
+ * @return
+ *   A salt based on information in settings.php, not in the database.
+ */
+function drupal_get_hash_salt() {
+  global $drupal_hash_salt, $databases;
+  // If the $drupal_hash_salt variable is empty, a hash of the serialized
+  // database credentials is used as a fallback salt.
+  return empty($drupal_hash_salt) ? hash('sha256', serialize($databases)) : $drupal_hash_salt;
 }
 
 /**
@@ -1893,44 +2005,50 @@ function drupal_hmac_base64($data, $key) {
 /**
  * Validate the HMAC and timestamp of a user agent header from simpletest.
  */
-function drupal_valid_test_ua($user_agent) {
-//  global $dbatabases;
-  global $db_url;
+function drupal_valid_test_ua() {
+  // No reason to reset this.
+  static $test_prefix;
 
-  list($prefix, $time, $salt, $hmac) = explode(';', $user_agent);
-  $check_string =  $prefix . ';' . $time . ';' . $salt;
-  // We use the database credentials from settings.php to make the HMAC key, since
-  // the database is not yet initialized and we can't access any Drupal variables.
-  // The file properties add more entropy not easily accessible to others.
-//  $filepath = DRUPAL_ROOT . '/includes/bootstrap.inc';
-  $filepath = './includes/bootstrap.inc';
-//  $key = sha1(serialize($databases) . filectime($filepath) . fileinode($filepath), TRUE);
-  $key = sha1(serialize($db_url) . filectime($filepath) . fileinode($filepath), TRUE);
-  // The HMAC must match.
-  return $hmac == base64_encode(hash_hmac('sha1', $check_string, $key, TRUE));
+  if (isset($test_prefix)) {
+    return $test_prefix;
+  }
+
+  if (isset($_SERVER['HTTP_USER_AGENT']) && preg_match("/^(simpletest\d+);(.+);(.+);(.+)$/", $_SERVER['HTTP_USER_AGENT'], $matches)) {
+    list(, $prefix, $time, $salt, $hmac) = $matches;
+    $check_string =  $prefix . ';' . $time . ';' . $salt;
+    // We use the salt from settings.php to make the HMAC key, since
+    // the database is not yet initialized and we can't access any Drupal variables.
+    // The file properties add more entropy not easily accessible to others.
+    $key = drupal_get_hash_salt() . filectime(__FILE__) . fileinode(__FILE__);
+    $time_diff = REQUEST_TIME - $time;
+    // Since we are making a local request a 5 second time window is allowed,
+    // and the HMAC must match.
+    if ($time_diff >= 0 && $time_diff <= 5 && $hmac == drupal_hmac_base64($check_string, $key)) {
+      $test_prefix = $prefix;
+      return $test_prefix;
+    }
+  }
+
+  $test_prefix = FALSE;
+  return $test_prefix;
 }
 
 /**
- * Generate a user agent string with a HMAC and timestamp for simpletest.
+ * Generates a user agent string with a HMAC and timestamp for simpletest. Backport from D7
  */
 function drupal_generate_test_ua($prefix) {
-//  global $dbatabases;
-  global $db_url;
   static $key;
 
   if (!isset($key)) {
-    // We use the database credentials to make the HMAC key, since we
-    // check the HMAC before the database is initialized. filectime()
-    // and fileinode() are not easily determined from remote.
-//    $filepath = DRUPAL_ROOT . '/includes/bootstrap.inc';
-    $filepath = './includes/bootstrap.inc';
-//    $key = sha1(serialize($databases) . filectime($filepath) . fileinode($filepath), TRUE);
-    $key = sha1(serialize($db_url) . filectime($filepath) . fileinode($filepath), TRUE);
+    // We use the salt from settings.php to make the HMAC key, since
+    // the database is not yet initialized and we can't access any Drupal variables.
+    // The file properties add more entropy not easily accessible to others.
+    $key = drupal_get_hash_salt() . filectime(__FILE__) . fileinode(__FILE__);
   }
-   // Generate a moderately secure HMAC based on the database credentials.
-   $salt = uniqid('', TRUE);
-   $check_string = $prefix . ';' . time() . ';' . $salt;
-   return  $check_string . ';' . base64_encode(hash_hmac('sha1', $check_string, $key, TRUE));
+  // Generate a moderately secure HMAC based on the database credentials.
+  $salt = uniqid('', TRUE);
+  $check_string = $prefix . ';' . time() . ';' . $salt;
+  return $check_string . ';' . drupal_hmac_base64($check_string, $key);
 }
 
 /**
@@ -2262,4 +2380,19 @@ function drupal_static_reset($name = NULL) {
  */
 function drupal_is_cli() {
   return (!isset($_SERVER['SERVER_SOFTWARE']) && (php_sapi_name() == 'cli' || (is_numeric($_SERVER['argc']) && $_SERVER['argc'] > 0)));
+}
+
+/**
+ * Formats text for emphasized display in a placeholder inside a sentence. Backport from D7
+ *
+ * Used automatically by format_string().
+ *
+ * @param $text
+ *   The text to format (plain-text).
+ *
+ * @return
+ *   The formatted text (html).
+ */
+function drupal_placeholder($text) {
+  return '<em class="placeholder">' . check_plain($text) . '</em>';
 }

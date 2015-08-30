@@ -6,41 +6,6 @@
  */
 
 /**
- * The current system version.
- */
-define('VERSION', '6.38-dev');
-
-/**
- * Core API compatibility.
- */
-define('DRUPAL_CORE_COMPATIBILITY', '6.x');
-
-/**
- * Minimum supported version of PHP.
- */
-define('DRUPAL_MINIMUM_PHP',    '4.3.5');
-
-/**
- * Minimum recommended value of PHP memory_limit.
- */
-define('DRUPAL_MINIMUM_PHP_MEMORY_LIMIT',    '16M');
-
-/**
- * Minimum supported version of MySQL, if it is used.
- */
-define('DRUPAL_MINIMUM_MYSQL',  '4.1.1');
-
-/**
- * Minimum supported version of PostgreSQL, if it is used.
- */
-define('DRUPAL_MINIMUM_PGSQL',  '7.4');
-
-/**
- * Maximum age of temporary files in seconds.
- */
-define('DRUPAL_MAXIMUM_TEMP_FILE_AGE', 21600);
-
-/**
  * Implementation of hook_help().
  */
 function system_help($path, $arg) {
@@ -759,6 +724,80 @@ function system_get_files_database(&$files, $type) {
       }
     }
   }
+}
+
+/**
+ * Updates the records in the system table based on the files array. Backport from D7
+ *
+ * @param $files
+ *   An array of files.
+ * @param $type
+ *   The type of the files.
+ */
+function system_update_files_database(&$files, $type) {
+  $result = db_query("SELECT * FROM {system} WHERE type = '%s'", $type);
+
+  // Add all files that need to be deleted to a DatabaseCondition.
+  $delete = array();
+  while($file = db_fetch_object($result)) {
+    if (isset($files[$file->name]) && is_object($files[$file->name])) {
+      // Keep the old filename from the database in case the file has moved.
+      $old_filename = $file->filename;
+
+      $updated_fields = array();
+
+      // Handle info specially, compare the serialized value.
+      $serialized_info = serialize($files[$file->name]->info);
+      if ($serialized_info != $file->info) {
+        $updated_fields['info'] = $serialized_info;
+      }
+      unset($file->info);
+
+      // Scan remaining fields to find only the updated values.
+      foreach ($file as $key => $value) {
+        if (isset($files[$file->name]->$key) && $files[$file->name]->$key != $value) {
+          $updated_fields[$key] = $files[$file->name]->$key;
+        }
+      }
+
+      // Update the record.
+      if (count($updated_fields)) {
+        drupal_write_record('system', $file, 'filename');
+      }
+
+      // Indicate that the file exists already.
+      $files[$file->name]->exists = TRUE;
+    }
+    else {
+      // File is not found in file system, so delete record from the system table.
+      $delete[] = $file->filename;
+    }
+  }
+
+  if (count($delete) > 0) {
+    // Delete all missing files from the system table, but only if the plugin
+    // has never been installed.
+    db_query("DELETE FROM {system} WHERE filename IN(" . db_placeholders($delete, 'varchar') . ") AND schema_version = -1", $delete);
+  }
+
+  // All remaining files are not in the system table, so we need to add them.
+  foreach ($files as &$file) {
+    if (isset($file->exists)) {
+      unset($file->exists);
+    }
+    else {
+      db_query("INSERT INTO {system} (filename, name, type, owner, info) VALUES ('%s', '%s', '%s', '%s', '%s')", $file->uri, $file->name, $type, isset($file->owner) ? $file->owner : '', serialize($file->info));
+
+      $file->type = $type;
+      $file->status = 0;
+      $file->schema_version = -1;
+    }
+  }
+
+  // If any module or theme was moved to a new location, we need to reset the
+  // system_list() cache or we will continue to load the old copy, look for
+  // schema updates in the wrong place, etc.
+  system_list_reset();
 }
 
 /**
@@ -1972,4 +2011,136 @@ function system_check_http_request() {
 function theme_system_powered_by($image_path) {
   $image = theme('image', $image_path, t('Powered by Drupal, an open source content management system'), t('Powered by Drupal, an open source content management system'));
   return l($image, 'http://drupal.org', array('html' => TRUE, 'absolute' => TRUE, 'external' => TRUE));
+}
+
+/**
+ * Helper function to scan and collect module .info data.
+ *
+ * @return
+ *   An associative array of module information.
+ */
+function _system_rebuild_module_data() {
+  // Find modules
+  $modules = drupal_system_listing('\.module$', 'modules', 'name', 0);
+
+  // Include the installation profile in modules that are loaded.
+  $profile = drupal_get_profile();
+  $modules[$profile] = new stdClass();
+  $modules[$profile]->name = $profile;
+  $modules[$profile]->uri = 'profiles/' . $profile . '/' . $profile . '.profile';
+  $modules[$profile]->filename = $profile . '.profile';
+
+  // Installation profile hooks are always executed last.
+  $modules[$profile]->weight = 1000;
+
+  // Set defaults for module info.
+  $defaults = array(
+    'dependencies' => array(),
+    'dependents' => array(),
+    'description' => '',
+    'package' => 'Other',
+    'version' => NULL,
+    'php' => DRUPAL_MINIMUM_PHP,
+    'files' => array(),
+    'bootstrap' => 0,
+  );
+
+  // Read info files for each module.
+  foreach ($modules as $key => $module) {
+    // The module system uses the key 'filename' instead of 'uri' so copy the
+    // value so it will be used by the modules system.
+    $modules[$key]->filename = $module->uri;
+
+    // Look for the info file.
+    $module->info = drupal_parse_info_file(dirname($module->uri) . '/' . $module->name . '.info');
+
+    // Skip modules that don't provide info.
+    if (empty($module->info)) {
+      unset($modules[$key]);
+      continue;
+    }
+
+    // Add the info file modification time, so it becomes available for
+    // contributed modules to use for ordering module lists.
+    $module->info['mtime'] = filemtime(dirname($module->uri) . '/' . $module->name . '.info');
+
+    // Merge in defaults and save.
+    $modules[$key]->info = $module->info + $defaults;
+
+    // Prefix stylesheets and scripts with module path.
+    $path = dirname($module->uri);
+    if (isset($module->info['stylesheets'])) {
+      $module->info['stylesheets'] = _system_info_add_path($module->info['stylesheets'], $path);
+    }
+    if (isset($module->info['scripts'])) {
+      $module->info['scripts'] = _system_info_add_path($module->info['scripts'], $path);
+    }
+
+    // Installation profiles are hidden by default, unless explicitly specified
+    // otherwise in the .info file.
+    if ($key == $profile && !isset($modules[$key]->info['hidden'])) {
+      $modules[$key]->info['hidden'] = TRUE;
+    }
+
+    // Invoke hook_system_info_alter() to give installed modules a chance to
+    // modify the data in the .info files if necessary.
+    $type = 'module';
+    drupal_alter('system_info', $modules[$key]->info, $modules[$key], $type);
+  }
+
+  if (isset($modules[$profile])) {
+    // The installation profile is required, if it's a valid module.
+    $modules[$profile]->info['required'] = TRUE;
+    // Add a default distribution name if the profile did not provide one. This
+    // matches the default value used in install_profile_info().
+    if (!isset($modules[$profile]->info['distribution_name'])) {
+      $modules[$profile]->info['distribution_name'] = 'Drupal';
+    }
+  }
+
+  return $modules;
+}
+
+/**
+ * Rebuild, save, and return data about all currently available modules.
+ *
+ * @return
+ *   Array of all available modules and their data.
+ */
+function system_rebuild_module_data($reset = FALSE) {
+  $modules_cache = &drupal_static(__FUNCTION__);
+  // Only rebuild once per request. $modules and $modules_cache cannot be
+  // combined into one variable, because the $modules_cache variable is reset by
+  // reference from system_list_reset() during the rebuild.
+  if (!isset($modules_cache) || $reset) {
+    $modules = _system_rebuild_module_data();
+    ksort($modules);
+    system_get_files_database($modules, 'module');
+    system_update_files_database($modules, 'module');
+    $modules = _module_build_dependencies($modules);
+    $modules_cache = $modules;
+  }
+  return $modules_cache;
+}
+
+/**
+ * Refresh bootstrap column in the system table. Backport from D7
+ *
+ * This is called internally by module_enable/disable() to flag modules that
+ * implement hooks used during bootstrap, such as hook_boot(). These modules
+ * are loaded earlier to invoke the hooks.
+ */
+function _system_update_bootstrap_status() {
+  $bootstrap_modules = array();
+  foreach (bootstrap_hooks() as $hook) {
+    foreach (module_implements($hook) as $module) {
+      $bootstrap_modules[] = $module;
+    }
+  }
+  if(!empty($bootstrap_modules)) {
+    db_query("UPDATE {system} SET bootstrap = 0");
+    db_query("UPDATE {system} SET bootstrap = 1 WHERE name IN (" . db_placeholders($bootstrap_modules, 'varchar') . ")", $bootstrap_modules);
+  }
+  // Reset the cached list of bootstrap modules.
+  system_list_reset();
 }

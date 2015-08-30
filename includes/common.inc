@@ -80,6 +80,22 @@ function drupal_get_content($region = NULL, $delimiter = ' ') {
 }
 
 /**
+ * Gets the name of the currently active installation profile. Backport from D7
+ *
+ * When this function is called during Drupal's initial installation process,
+ * the name of the profile that's about to be installed is stored in the global
+ * installation state. At all other times, the standard Drupal systems variable
+ * table contains the name of the current profile, and we can call
+ * variable_get() to determine what one is active.
+ *
+ * @return $profile
+ *   The name of the installation profile.
+ */
+function drupal_get_profile() {
+  return variable_get('install_profile', 'standard');
+}
+
+/**
  * Set the breadcrumb trail for the current page.
  *
  * @param $breadcrumb
@@ -1697,6 +1713,7 @@ function drupal_page_footer() {
     ob_flush();
   }
 
+  module_implements_write_cache();
 }
 
 /**
@@ -2893,65 +2910,120 @@ function drupal_cron_cleanup() {
 }
 
 /**
- * Return an array of system file objects.
+ * Returns information about system object files (modules, themes, etc.).
  *
- * Returns an array of file objects of the given type from the site-wide
- * directory (i.e. modules/), the all-sites directory (i.e.
- * sites/all/modules/), the profiles directory, and site-specific directory
- * (i.e. sites/somesite/modules/). The returned array will be keyed using the
- * key specified (name, basename, filename). Using name or basename will cause
- * site-specific files to be prioritized over similar files in the default
- * directories. That is, if a file with the same name appears in both the
- * site-wide directory and site-specific directory, only the site-specific
- * version will be included.
+ * This function is used to find all or some system object files (module files,
+ * theme files, etc.) that exist on the site. It searches in several locations,
+ * depending on what type of object you are looking for. For instance, if you
+ * are looking for modules and call:
+ * @code
+ * drupal_system_listing("/\.module$/", "modules", 'name', 0);
+ * @endcode
+ * this function will search the site-wide modules directory (i.e., /modules/),
+ * your installation profile's directory (i.e.,
+ * /profiles/your_site_profile/modules/), the all-sites directory (i.e.,
+ * /sites/all/modules/), and your site-specific directory (i.e.,
+ * /sites/your_site_dir/modules/), in that order, and return information about
+ * all of the files ending in .module in those directories.
  *
- * @param $mask
- *   The regular expression of the files to find.
- * @param $directory
+ * The information is returned in an associative array, which can be keyed on
+ * the file name ($key = 'filename'), the file name without the extension ($key
+ * = 'name'), or the full file stream URI ($key = 'uri'). If you use a key of
+ * 'filename' or 'name', files found later in the search will take precedence
+ * over files found earlier (unless they belong to a module or theme not
+ * compatible with Drupal core); if you choose a key of 'uri', you will get all
+ * files found.
+ *
+ * @param string $mask
+ *   The preg_match() regular expression for the files to find.
+ * @param string $directory
  *   The subdirectory name in which the files are found. For example,
- *   'modules' will search in both modules/ and
- *   sites/somesite/modules/.
- * @param $key
- *   The key to be passed to file_scan_directory().
- * @param $min_depth
- *   Minimum depth of directories to return files from.
+ *   'modules' will search in sub-directories of the top-level /modules
+ *   directory, sub-directories of /sites/all/modules/, etc.
+ * @param string $key
+ *   The key to be used for the associative array returned. Possible values are
+ *   'uri', for the file's URI; 'filename', for the basename of the file; and
+ *   'name' for the name of the file without the extension. If you choose 'name'
+ *   or 'filename', only the highest-precedence file will be returned.
+ * @param int $min_depth
+ *   Minimum depth of directories to return files from, relative to each
+ *   directory searched. For instance, a minimum depth of 2 would find modules
+ *   inside /modules/node/tests, but not modules directly in /modules/node.
  *
- * @return
- *   An array of file objects of the specified type.
+ * @return array
+ *   An associative array of file objects, keyed on the chosen key. Each element
+ *   in the array is an object containing file information, with properties:
+ *   - 'uri': Full URI of the file.
+ *   - 'filename': File name.
+ *   - 'name': Name of file without the extension.
  */
 function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1) {
-  global $profile;
   $config = conf_path();
 
-  // When this function is called during Drupal's initial installation process,
-  // the name of the profile that's about to be installed is stored in the global
-  // $profile variable. At all other times, the standard Drupal systems variable
-  // table contains the name of the current profile, and we can call variable_get()
-  // to determine what one is active.
-  if (!isset($profile)) {
-    $profile = variable_get('install_profile', 'default');
-  }
   $searchdir = array($directory);
   $files = array();
 
   // The 'profiles' directory contains pristine collections of modules and
-  // themes as organized by a distribution.  It is pristine in the same way
+  // themes as organized by a distribution. It is pristine in the same way
   // that /modules is pristine for core; users should avoid changing anything
   // there in favor of sites/all or sites/<domain> directories.
-  if (file_exists("profiles/$profile/$directory")) {
-    $searchdir[] = "profiles/$profile/$directory";
+  $profiles = array();
+  $profile = drupal_get_profile();
+  // For SimpleTest to be able to test modules packaged together with a
+  // distribution we need to include the profile of the parent site (in which
+  // test runs are triggered).
+  if (drupal_valid_test_ua($_SERVER['HTTP_USER_AGENT'])) {
+    $testing_profile = variable_get('simpletest_parent_profile', FALSE);
+    if ($testing_profile && $testing_profile != $profile) {
+      $profiles[] = $testing_profile;
+    }
+  }
+  // In case both profile directories contain the same extension, the actual
+  // profile always has precedence.
+  $profiles[] = $profile;
+  foreach ($profiles as $profile) {
+    if (file_exists("profiles/$profile/$directory")) {
+      $searchdir[] = "profiles/$profile/$directory";
+    }
   }
 
-  // Always search sites/all/* as well as the global directories
-  $searchdir[] = 'sites/all/'. $directory;
+  // Always search sites/all/* as well as the global directories.
+  $searchdir[] = 'sites/all/' . $directory;
 
   if (file_exists("$config/$directory")) {
     $searchdir[] = "$config/$directory";
   }
 
-  // Get current list of items
+  // Get current list of items.
+  if (!function_exists('file_scan_directory')) {
+    require_once DRUPAL_ROOT . '/includes/file.inc';
+  }
   foreach ($searchdir as $dir) {
-    $files = array_merge($files, file_scan_directory($dir, $mask, array('.', '..', 'CVS'), 0, TRUE, $key, $min_depth));
+    $files_to_add = file_scan_directory($dir, $mask, array('key' => $key, 'min_depth' => $min_depth));
+
+    // Duplicate files found in later search directories take precedence over
+    // earlier ones, so we want them to overwrite keys in our resulting
+    // $files array.
+    // The exception to this is if the later file is from a module or theme not
+    // compatible with Drupal core. This may occur during upgrades of Drupal
+    // core when new modules exist in core while older contrib modules with the
+    // same name exist in a directory such as sites/all/modules/.
+    foreach (array_intersect_key($files_to_add, $files) as $file_key => $file) {
+      // If it has no info file, then we just behave liberally and accept the
+      // new resource on the list for merging.
+      if (file_exists($info_file = dirname($file->uri) . '/' . $file->name . '.info')) {
+        // Get the .info file for the module or theme this file belongs to.
+        $info = drupal_parse_info_file($info_file);
+
+        // If the module or theme is incompatible with Drupal core, remove it
+        // from the array for the current search directory, so it is not
+        // overwritten when merged with the $files array.
+        if (isset($info['core']) && $info['core'] != DRUPAL_CORE_COMPATIBILITY) {
+          unset($files_to_add[$file_key]);
+        }
+      }
+    }
+    $files = array_merge($files, $files_to_add);
   }
 
   return $files;
@@ -4180,4 +4252,62 @@ function debug($data, $label = NULL, $print_r = FALSE) {
   // Print $data contents to string.
   $string = $print_r ? print_r($data, TRUE) : var_export($data, TRUE);
   trigger_error(trim($label ? "$label: $string" : $string));
+}
+
+/**
+ * Parses a dependency for comparison by drupal_check_incompatibility(). Backport from D7
+ *
+ * @param $dependency
+ *   A dependency string, for example 'foo (>=7.x-4.5-beta5, 3.x)'.
+ *
+ * @return
+ *   An associative array with three keys:
+ *   - 'name' includes the name of the thing to depend on (e.g. 'foo').
+ *   - 'original_version' contains the original version string (which can be
+ *     used in the UI for reporting incompatibilities).
+ *   - 'versions' is a list of associative arrays, each containing the keys
+ *     'op' and 'version'. 'op' can be one of: '=', '==', '!=', '<>', '<',
+ *     '<=', '>', or '>='. 'version' is one piece like '4.5-beta3'.
+ *   Callers should pass this structure to drupal_check_incompatibility().
+ *
+ * @see drupal_check_incompatibility()
+ */
+function drupal_parse_dependency($dependency) {
+  // We use named subpatterns and support every op that version_compare
+  // supports. Also, op is optional and defaults to equals.
+  $p_op = '(?P<operation>!=|==|=|<|<=|>|>=|<>)?';
+  // Core version is always optional: 7.x-2.x and 2.x is treated the same.
+  $p_core = '(?:' . preg_quote(DRUPAL_CORE_COMPATIBILITY) . '-)?';
+  $p_major = '(?P<major>\d+)';
+  // By setting the minor version to x, branches can be matched.
+  $p_minor = '(?P<minor>(?:\d+|x)(?:-[A-Za-z]+\d+)?)';
+  $value = array();
+  $parts = explode('(', $dependency, 2);
+  $value['name'] = trim($parts[0]);
+  if (isset($parts[1])) {
+    $value['original_version'] = ' (' . $parts[1];
+    foreach (explode(',', $parts[1]) as $version) {
+      if (preg_match("/^\s*$p_op\s*$p_core$p_major\.$p_minor/", $version, $matches)) {
+        $op = !empty($matches['operation']) ? $matches['operation'] : '=';
+        if ($matches['minor'] == 'x') {
+          // Drupal considers "2.x" to mean any version that begins with
+          // "2" (e.g. 2.0, 2.9 are all "2.x"). PHP's version_compare(),
+          // on the other hand, treats "x" as a string; so to
+          // version_compare(), "2.x" is considered less than 2.0. This
+          // means that >=2.x and <2.x are handled by version_compare()
+          // as we need, but > and <= are not.
+          if ($op == '>' || $op == '<=') {
+            $matches['major']++;
+          }
+          // Equivalence can be checked by adding two restrictions.
+          if ($op == '=' || $op == '==') {
+            $value['versions'][] = array('op' => '<', 'version' => ($matches['major'] + 1) . '.x');
+            $op = '>=';
+          }
+        }
+        $value['versions'][] = array('op' => $op, 'version' => $matches['major'] . '.' . $matches['minor']);
+      }
+    }
+  }
+  return $value;
 }

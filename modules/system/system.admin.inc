@@ -1132,10 +1132,12 @@ function system_modules_uninstall_submit($form, &$form_state) {
 
   if (!empty($form['#confirmed'])) {
     // Call the uninstall routine for each selected module.
-    foreach (array_filter($form_state['values']['uninstall']) as $module => $value) {
-      drupal_uninstall_module($module);
+    $modules = array_keys($form_state['values']['uninstall']);
+    if(drupal_uninstall_modules($modules)) {
+      drupal_set_message(t('The selected modules have been uninstalled.'));
+    } else {
+      drupal_set_message(t('Unable to uninstall selected modules.'));
     }
-    drupal_set_message(t('The selected modules have been uninstalled.'));
 
     unset($form_state['storage']);
     $form_state['redirect'] = 'admin/build/modules/uninstall';

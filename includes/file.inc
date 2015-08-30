@@ -1038,61 +1038,78 @@ function file_download_access($filepath) {
 }
 
 /**
- * Finds all files that match a given mask in a given directory.
+ * Finds all files that match a given mask in a given directory. Backport from D6
  *
  * Directories and files beginning with a period are excluded; this
  * prevents hidden files and directories (such as SVN working directories)
  * from being scanned.
  *
  * @param $dir
- *   The base directory for the scan, without trailing slash.
+ *   The base directory or URI to scan, without trailing slash.
  * @param $mask
- *   The regular expression of the files to find.
- * @param $nomask
- *   An array of files/directories to ignore.
- * @param $callback
- *   The callback function to call for each match.
- * @param $recurse
- *   When TRUE, the directory scan will recurse the entire tree
- *   starting at the provided directory.
- * @param $key
- *   The key to be used for the returned associative array of files. Possible
- *   values are "filename", for the path starting with $dir; "basename", for
- *   the basename of the file; and "name" for the name of the file without the
- *   extension.
- * @param $min_depth
- *   Minimum depth of directories to return files from.
+ *   The preg_match() regular expression of the files to find.
+ *   Or the ereg() expression for D6 modules backward compatibility.
+ * @param $options
+ *   An associative array of additional options, with the following elements:
+ *   - 'nomask': The preg_match() regular expression of the files to ignore.
+ *     Defaults to '/(\.\.?|CVS)$/'.
+ *   - 'callback': The callback function to call for each match. There is no
+ *     default callback.
+ *   - 'recurse': When TRUE, the directory scan will recurse the entire tree
+ *     starting at the provided directory. Defaults to TRUE.
+ *   - 'key': The key to be used for the returned associative array of files.
+ *     Possible values are 'uri', for the file's URI; 'filename', for the
+ *     basename of the file; and 'name' for the name of the file without the
+ *     extension. Defaults to 'uri'.
+ *   - 'min_depth': Minimum depth of directories to return files from. Defaults
+ *     to 0.
  * @param $depth
  *   Current depth of recursion. This parameter is only used internally and
  *   should not be passed in.
  *
  * @return
- *   An associative array (keyed on the provided key) of objects with
- *   "filename", "basename", and "name" members corresponding to the
- *   matching files.
+ *   An associative array (keyed on the chosen key) of objects with 'uri',
+ *   'filename', and 'name' members corresponding to the matching files.
  */
-function file_scan_directory($dir, $mask, $nomask = array('.', '..', 'CVS'), $callback = 0, $recurse = TRUE, $key = 'filename', $min_depth = 0, $depth = 0) {
-  $key = (in_array($key, array('filename', 'basename', 'name')) ? $key : 'filename');
-  $files = array();
+function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
+  // Merge in defaults.
+  $options += array(
+    'nomask' => '/(\.\.?|CVS)$/',
+    'callback' => 0,
+    'recurse' => TRUE,
+    'key' => 'uri',
+    'min_depth' => 0,
+  );
 
+  $options['key'] = in_array($options['key'], array('uri', 'filename', 'name')) ? $options['key'] : 'uri';
+  $files = array();
   if (is_dir($dir) && $handle = opendir($dir)) {
-    while (FALSE !== ($file = readdir($handle))) {
-      if (!in_array($file, $nomask) && $file[0] != '.') {
-        if (is_dir("$dir/$file") && $recurse) {
+    while (FALSE !== ($filename = readdir($handle))) {
+      if (!preg_match($options['nomask'], $filename) && $filename[0] != '.') {
+        $uri = "$dir/$filename";
+        // D6 doesn't have file stream support
+        //$uri = file_stream_wrapper_uri_normalize($uri);
+        if (is_dir($uri) && $options['recurse']) {
           // Give priority to files in this folder by merging them in after any subdirectory files.
-          $files = array_merge(file_scan_directory("$dir/$file", $mask, $nomask, $callback, $recurse, $key, $min_depth, $depth + 1), $files);
+          $files = array_merge(file_scan_directory($uri, $mask, $options, $depth + 1), $files);
         }
-        elseif ($depth >= $min_depth && @ereg($mask, $file)) {
-          // Always use this match over anything already set in $files with the same $$key.
-          $filename = "$dir/$file";
-          $basename = basename($file);
-          $name = substr($basename, 0, strrpos($basename, '.'));
-          $files[$$key] = new stdClass();
-          $files[$$key]->filename = $filename;
-          $files[$$key]->basename = $basename;
-          $files[$$key]->name = $name;
-          if ($callback) {
-            $callback($filename);
+        elseif ($depth >= $options['min_depth'] && (
+            // Backward compatibility with D6
+            ($mask{0} == '/' && preg_match($mask, $filename)) ||
+            // Backward compatibility with D6
+            ereg($mask, $filename)
+          )) {
+          // Always use this match over anything already set in $files with the
+          // same $$options['key'].
+          $file = new stdClass();
+          $file->uri = $uri;
+          $file->filename = $uri;
+          $file->basename = $filename;
+          $file->name = pathinfo($filename, PATHINFO_FILENAME);
+          $key = $options['key'];
+          $files[$file->$key] = $file;
+          if ($options['callback']) {
+            $options['callback']($uri);
           }
         }
       }
