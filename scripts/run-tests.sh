@@ -369,23 +369,38 @@ function simpletest_script_execute_batch() {
  * Run a single test (assume a Drupal bootstrapped environment).
  */
 function simpletest_script_run_one_test($test_id, $test_class) {
+  global $current_test_class;
   // Drupal 6.
   require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
   $classes = simpletest_test_get_all_classes();
+
+  function simpletest_shutdown() {
+    global $test_run_success, $current_test_class;
+    if(!$test_run_success) {
+      print simpletest_script_print('FATAL: Test exited unexpectedly: ' . $current_test_class . "\n", simpletest_script_color_code('fail'));
+    }
+  }
+
+  register_shutdown_function('simpletest_shutdown');
+
   if(strpos($test_class, '::') !== FALSE) {
     // Run single method
     list($class, $method) = explode('::', $test_class);
     require_once $classes[$class]['file'];
 
+    $current_test_class = $class;
     $test = new $class($test_id);
     $test->run($method);
   } else {
     require_once $classes[$test_class]['file'];
 
+    $current_test_class = $test_class;
     $test = new $test_class($test_id);
     $test->run();
   }
   
+  $test_run_success = TRUE;
+
   $info = $test->getInfo();
 
   $status = ((isset($test->results['#fail']) && $test->results['#fail'] > 0)
