@@ -265,7 +265,7 @@ function search_dirty($word = NULL) {
 function search_cron() {
   // We register a shutdown function to ensure that search_total is always up
   // to date.
-  register_shutdown_function('search_update_totals');
+  drupal_register_shutdown_function('search_update_totals');
 
   // Update word index
   foreach (module_list() as $module) {

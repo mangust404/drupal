@@ -291,7 +291,7 @@ abstract class DrupalTestCase {
       $message = t("Expected @first to match second array", array('@first' => var_export($first, TRUE)));
 
       if(!is_array($second)) {
-        return $message . t(' and second parameter is not an array');
+        return $message . t(' and second parameter is not an array: @value', array('@value' => var_dump($second, TRUE)));
       }
 
       $message .= "\n\n";
@@ -323,7 +323,7 @@ abstract class DrupalTestCase {
         $second = substr($second, 0, 2048) . '... (' . (strlen($second) - 2048) . ' chars)';
       }
 
-      return t("Expected: @first\n but got: \n @second.", array('@first' => $first, '@second' => $second));
+      return t("Expected: @second\n but got: \n @first.", array('@first' => $first, '@second' => $second));
     }
   }
 
@@ -455,6 +455,7 @@ abstract class DrupalTestCase {
    * Run all tests in this class.
    */
   public function run($run_method = NULL) {
+    global $current_test_method;
     // Initialize verbose debugging.
     simpletest_verbose(NULL, file_directory_path(), get_class($this));
 
@@ -473,6 +474,8 @@ abstract class DrupalTestCase {
       // If the current method starts with "test", run it - it's a test.
       if (strtolower(substr($method, 0, 4)) == 'test' && 
              ($run_method === NULL || $method == $run_method) ) {
+        $current_test_method = $method;
+      
         $this->setUp();
         try {
           $this->$method();
@@ -640,6 +643,13 @@ class DrupalUnitTestCase extends DrupalTestCase {
  * Test case for typical Drupal tests.
  */
 class DrupalWebTestCase extends DrupalTestCase {
+  /**
+   * The profile to install as a basis for testing.
+   *
+   * @var string
+   */
+  protected $profile = 'default';
+
   /**
    * The URL currently loaded in the internal browser.
    *
@@ -1122,7 +1132,7 @@ class DrupalWebTestCase extends DrupalTestCase {
 //    $this->originalLanguageDefault = variable_get('language_default');
     $this->originalPrefix = $db_prefix;
     $this->originalFileDirectory = file_directory_path();
-//    $this->originalProfile = drupal_get_profile();
+    $this->originalProfile = drupal_get_profile();
     $clean_url_original = variable_get('clean_url', 0);
 
     // Must reset locale here, since schema calls t(). (Drupal 6)
@@ -1164,15 +1174,21 @@ class DrupalWebTestCase extends DrupalTestCase {
 
 //    $this->preloadRegistry();
 
-//    // Include the default profile
-//    variable_set('install_profile', 'default');
+    // Set the 'simpletest_parent_profile' variable to add the parent profile's
+    // search path to the child site's search paths.
+    // @see drupal_system_listing()
+    // @todo This may need to be primed like 'install_profile' above.
+    variable_set('simpletest_parent_profile', $this->originalProfile);
+    // Include the default profile
+    variable_set('install_profile', $this->profile);
+    //$this->refreshVariables();
 //    $profile_details = install_profile_info('default', 'en');
     //module_rebuild_cache();
 
     // Add the specified modules to the list of modules in the default profile.
     // Install the modules specified by the default profile.
 //    drupal_install_modules($profile_details['dependencies'], TRUE);
-    module_enable(drupal_verify_profile('default', 'en'));
+    module_enable(drupal_verify_profile($this->profile, 'en'));
 
 //    node_type_clear();
 
@@ -1197,7 +1213,10 @@ class DrupalWebTestCase extends DrupalTestCase {
 //    $install_state = array();
 //    drupal_install_modules(array('default'), TRUE);
     $task = 'profile';
-    default_profile_tasks($task, '');
+    $func = $this->profile . '_profile_tasks';
+    if(function_exists($func)) {
+      $func($task, '');
+    }
 
     // Rebuild caches.
 //    node_types_rebuild();
@@ -1214,8 +1233,6 @@ class DrupalWebTestCase extends DrupalTestCase {
     session_save_session(FALSE);
     $user = user_load(array('uid' => 1));
 
-    // Restore necessary variables.
-    variable_set('install_profile', 'default');
 //    variable_set('install_task', 'done');
     variable_set('install_task', 'profile-finished');
     variable_set('clean_url', $clean_url_original);
@@ -1826,7 +1843,49 @@ class DrupalWebTestCase extends DrupalTestCase {
     }
     return $submit_matches;
   }
+  
+  /**
+   * Builds an XPath query.
+   *
+   * Builds an XPath query by replacing placeholders in the query by the value
+   * of the arguments.
+   *
+   * XPath 1.0 (the version supported by libxml2, the underlying XML library
+   * used by PHP) doesn't support any form of quotation. This function
+   * simplifies the building of XPath expression.
+   *
+   * @param $xpath
+   *   An XPath query, possibly with placeholders in the form ':name'.
+   * @param $args
+   *   An array of arguments with keys in the form ':name' matching the
+   *   placeholders in the query. The values may be either strings or numeric
+   *   values.
+   * @return
+   *   An XPath query with arguments replaced.
+   */
+  protected function buildXPathQuery($xpath, array $args = array()) {
+    // Replace placeholders.
+    foreach ($args as $placeholder => $value) {
+      // XPath 1.0 doesn't support a way to escape single or double quotes in a
+      // string literal. We split double quotes out of the string, and encode
+      // them separately.
+      if (is_string($value)) {
+        // Explode the text at the quote characters.
+        $parts = explode('"', $value);
 
+        // Quote the parts.
+        foreach ($parts as &$part) {
+          $part = '"' . $part . '"';
+        }
+
+        // Return the string.
+        $value = count($parts) > 1 ? 'concat(' . implode(', \'"\', ', $parts) . ')' : $parts[0];
+      }
+      $xpath = preg_replace('/' . preg_quote($placeholder) . '\b/', $value, $xpath);
+    }
+    return $xpath;
+  }
+  
   /**
    * Perform an xpath search on the contents of the internal browser. The search
    * is relative to the root element (HTML tag normally) of the page.
@@ -2314,7 +2373,8 @@ class DrupalWebTestCase extends DrupalTestCase {
     if (!$message) {
       $message = t('Pattern "@pattern" found', array('@pattern' => $pattern));
     }
-    return $this->assert((bool) preg_match($pattern, $this->drupalGetContent()), $message, $group);
+    $result = (bool) preg_match($pattern, $this->drupalGetContent());
+    return $this->assert($result, $message, $group, NULL, $result? '': t("Expected raw content to match pattern \"@pattern\"\n\n but found:\n\"@raw\"", array('@raw' => $this->content, '@pattern' => $pattern)));
   }
 
   /**
@@ -2333,7 +2393,8 @@ class DrupalWebTestCase extends DrupalTestCase {
     if (!$message) {
       $message = t('Pattern "@pattern" not found', array('@pattern' => $pattern));
     }
-    return $this->assert(!preg_match($pattern, $this->drupalGetContent()), $message, $group);
+    $result = !preg_match($pattern, $this->drupalGetContent());
+    return $this->assert($result, $message, $group, NULL, $result? '': t("Expected raw content NOT to match pattern \"@pattern\"\n\n but found:\n\"@raw\"", array('@raw' => $this->content, '@pattern' => $pattern)));
   }
 
   /**

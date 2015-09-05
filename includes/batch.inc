@@ -19,7 +19,7 @@ function _batch_page() {
   }
 
   // Register database update for end of processing.
-  register_shutdown_function('_batch_shutdown');
+  drupal_register_shutdown_function('_batch_shutdown');
 
   $op = isset($_REQUEST['op']) ? $_REQUEST['op'] : '';
   $output = NULL;

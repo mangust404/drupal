@@ -579,20 +579,9 @@ function drupal_prepare_form($form_id, &$form, &$form_state) {
     }
   }
 
-  // Normally, we would call drupal_alter($form_id, $form, $form_state).
-  // However, drupal_alter() normally supports just one byref parameter. Using
-  // the __drupal_alter_by_ref key, we can store any additional parameters
-  // that need to be altered, and they'll be split out into additional params
-  // for the hook_form_alter() implementations.
-  // @todo: Remove this in Drupal 7.
-  $data = &$form;
-  $data['__drupal_alter_by_ref'] = array(&$form_state);
-  drupal_alter('form_'. $form_id, $data);
-
-  // __drupal_alter_by_ref is unset in the drupal_alter() function, we need
-  // to repopulate it to ensure both calls get the data.
-  $data['__drupal_alter_by_ref'] = array(&$form_state);
-  drupal_alter('form', $data, $form_id);
+  $hooks = array('form');
+  $hooks[] = 'form_' . $form_id;
+  drupal_alter($hooks, $form, $form_state, $form_id);
 }
 
 
@@ -881,6 +870,10 @@ function form_get_errors() {
  */
 function form_get_error($element) {
   $form = form_set_error();
+  if(empty($element['#parents'][0])) {
+    // Nothing to return if the rendered element is not a part of the form
+    return;
+  }
   $key = $element['#parents'][0];
   if (isset($form[$key])) {
     return $form[$key];
@@ -1502,7 +1495,14 @@ function theme_select($element) {
   $size = $element['#size'] ? ' size="'. $element['#size'] .'"' : '';
   _form_set_class($element, array('form-select'));
   $multiple = $element['#multiple'];
-  return theme('form_element', $element, '<select name="'. $element['#name'] .''. ($multiple ? '[]' : '') .'"'. ($multiple ? ' multiple="multiple" ' : '') . drupal_attributes($element['#attributes']) .' id="'. $element['#id'] .'" '. $size .'>'. form_select_options($element) .'</select>');
+
+  if(isset($element['#name']) && !empty($multiple)) {
+    $element['#name'] .= '[]';
+  }
+  
+  element_set_attributes($element, array('name', 'id'));
+
+  return theme('form_element', $element, '<select'. ($multiple ? ' multiple="multiple" ' : '') . drupal_attributes($element['#attributes']) . $size . '>'. form_select_options($element) .'</select>');
 }
 
 function form_select_options($element, $choices = NULL) {
@@ -1512,7 +1512,7 @@ function form_select_options($element, $choices = NULL) {
   // array_key_exists() accommodates the rare event where $element['#value'] is NULL.
   // isset() fails in this situation.
   $value_valid = isset($element['#value']) || array_key_exists('#value', $element);
-  $value_is_array = is_array($element['#value']);
+  $value_is_array = isset($element['#value']) && is_array($element['#value']);
   $options = '';
   foreach ($choices as $key => $choice) {
     if (is_array($choice)) {
@@ -1629,13 +1629,14 @@ function theme_fieldset($element) {
 function theme_radio($element) {
   _form_set_class($element, array('form-radio'));
   $output = '<input type="radio" ';
-  $output .= 'id="'. $element['#id'] .'" ';
-  $output .= 'name="'. $element['#name'] .'" ';
-  $output .= 'value="'. $element['#return_value'] .'" ';
-  $output .= (check_plain($element['#value']) == $element['#return_value']) ? ' checked="checked" ' : ' ';
+  if(!empty($element['#return_value'])) {
+    $output .= 'value="'. $element['#return_value'] .'" ';
+    $output .= (check_plain($element['#value']) == $element['#return_value']) ? ' checked="checked" ' : ' ';
+  }
+  element_set_attributes($element, array('id', 'name'));
   $output .= drupal_attributes($element['#attributes']) .' />';
   if (!is_null($element['#title'])) {
-    $output = '<label class="option" for="'. $element['#id'] .'">'. $output .' '. $element['#title'] .'</label>';
+    $output = '<label class="option"' . (!empty($element['#id'])? ' for="'. $element['#id'] .'"': '') . '>'. $output .' '. $element['#title'] .'</label>';
   }
 
   unset($element['#title']);
@@ -1972,15 +1973,17 @@ function theme_item($element) {
  */
 function theme_checkbox($element) {
   _form_set_class($element, array('form-checkbox'));
-  $checkbox = '<input ';
-  $checkbox .= 'type="checkbox" ';
-  $checkbox .= 'name="'. $element['#name'] .'" ';
-  $checkbox .= 'id="'. $element['#id'] .'" ' ;
-  $checkbox .= 'value="'. $element['#return_value'] .'" ';
-  $checkbox .= $element['#value'] ? ' checked="checked" ' : ' ';
+  $checkbox = '<input';
+  $checkbox .= ' type="checkbox"';
+  element_set_attributes($element, array('name', 'id', 'value'));
+
+  if(!empty($element['#return_value'])) {
+    $checkbox .= ' value="'. $element['#return_value'] .'"';
+    $checkbox .= !empty($element['#value']) ? ' checked="checked"' : '';
+  }
   $checkbox .= drupal_attributes($element['#attributes']) .' />';
 
-  if (!is_null($element['#title'])) {
+  if (!is_null($element['#title']) && !empty($element['#id'])) {
     $checkbox = '<label class="option" for="'. $element['#id'] .'">'. $checkbox .' '. $element['#title'] .'</label>';
   }
 
@@ -2060,7 +2063,9 @@ function theme_button($element) {
     $element['#attributes']['class'] = 'form-'. $element['#button_type'];
   }
 
-  return '<input type="submit" '. (empty($element['#name']) ? '' : 'name="'. $element['#name'] .'" ') .'id="'. $element['#id'] .'" value="'. check_plain($element['#value']) .'" '. drupal_attributes($element['#attributes']) ." />\n";
+  element_set_attributes($element, array('id', 'name', 'value'));
+
+  return '<input type="submit"'. drupal_attributes($element['#attributes']) ." />\n";
 }
 
 /**
@@ -2098,7 +2103,9 @@ function theme_image_button($element) {
  * @ingroup themeable
  */
 function theme_hidden($element) {
-  return '<input type="hidden" name="'. $element['#name'] .'" id="'. $element['#id'] .'" value="'. check_plain($element['#value']) ."\" ". drupal_attributes($element['#attributes']) ." />\n";
+  element_set_attributes($element, array('name', 'id', 'value'));
+
+  return '<input type="hidden"' . drupal_attributes($element['#attributes']) ." />\n";
 }
 
 /**
@@ -2145,8 +2152,8 @@ function form_process_autocomplete($element) {
  * @ingroup themeable
  */
 function theme_textfield($element) {
-  $size = empty($element['#size']) ? '' : ' size="'. $element['#size'] .'"';
-  $maxlength = empty($element['#maxlength']) ? '' : ' maxlength="'. $element['#maxlength'] .'"';
+  element_set_attributes($element, array('id', 'name', 'value', 'size', 'maxlength'));
+
   $class = array('form-text');
   $extra = '';
   $output = '';
@@ -2162,7 +2169,7 @@ function theme_textfield($element) {
     $output .= '<span class="field-prefix">'. $element['#field_prefix'] .'</span> ';
   }
 
-  $output .= '<input type="text"'. $maxlength .' name="'. $element['#name'] .'" id="'. $element['#id'] .'"'. $size .' value="'. check_plain($element['#value']) .'"'. drupal_attributes($element['#attributes']) .' />';
+  $output .= '<input type="text"' . drupal_attributes($element['#attributes']) .' />';
 
   if (isset($element['#field_suffix'])) {
     $output .= ' <span class="field-suffix">'. $element['#field_suffix'] .'</span>';
@@ -2217,8 +2224,10 @@ function theme_textarea($element) {
     $class[] = 'resizable';
   }
 
+  element_set_attributes($element, array('cols', 'rows', 'name', 'id'));
+
   _form_set_class($element, $class);
-  return theme('form_element', $element, '<textarea cols="'. $element['#cols'] .'" rows="'. $element['#rows'] .'" name="'. $element['#name'] .'" id="'. $element['#id'] .'" '. drupal_attributes($element['#attributes']) .'>'. check_plain($element['#value']) .'</textarea>');
+  return theme('form_element', $element, '<textarea'. drupal_attributes($element['#attributes']) .'>'. check_plain($element['#value']) .'</textarea>');
 }
 
 /**
@@ -2251,11 +2260,10 @@ function theme_markup($element) {
  * @ingroup themeable
  */
 function theme_password($element) {
-  $size = $element['#size'] ? ' size="'. $element['#size'] .'" ' : '';
-  $maxlength = $element['#maxlength'] ? ' maxlength="'. $element['#maxlength'] .'" ' : '';
+  element_set_attributes($element, array('id', 'name', 'size', 'maxlength'));
 
   _form_set_class($element, array('form-text'));
-  $output = '<input type="password" name="'. $element['#name'] .'" id="'. $element['#id'] .'" '. $maxlength . $size . drupal_attributes($element['#attributes']) .' />';
+  $output = '<input type="password"' . drupal_attributes($element['#attributes']) .' />';
   return theme('form_element', $element, $output);
 }
 
@@ -2296,7 +2304,9 @@ function process_weight($element) {
  */
 function theme_file($element) {
   _form_set_class($element, array('form-file'));
-  return theme('form_element', $element, '<input type="file" name="'. $element['#name'] .'"'. ($element['#attributes'] ? ' '. drupal_attributes($element['#attributes']) : '') .' id="'. $element['#id'] .'" size="'. $element['#size'] ."\" />\n");
+  element_set_attributes($element, array('name', 'id', 'size'));
+
+  return theme('form_element', $element, '<input type="file"' . drupal_attributes($element['#attributes']) . " />\n");
 }
 
 /**

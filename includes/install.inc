@@ -276,7 +276,6 @@ function drupal_verify_profile($profile, $locale) {
   include_once './includes/common.inc';
 
   $profile_file = "./profiles/$profile/$profile.profile";
-
   if (!isset($profile) || !file_exists($profile_file)) {
     install_no_profile_error();
   }

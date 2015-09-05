@@ -148,12 +148,28 @@ function system_elements() {
   $type['file'] = array('#input' => TRUE, '#size' => 60);
 
   // Form structure
-  $type['item'] = array('#value' => '');
+  $type['item'] = array('#value' => '', '#pre_render' => array('drupal_pre_render_markup'));
   $type['hidden'] = array('#input' => TRUE, '#process' => array('form_expand_ahah'));
   $type['value'] = array('#input' => TRUE);
-  $type['markup'] = array('#prefix' => '', '#suffix' => '');
+  $type['markup'] = array('#prefix' => '', '#suffix' => '', '#pre_render' => array('drupal_pre_render_markup'));
   $type['fieldset'] = array('#collapsible' => FALSE, '#collapsed' => FALSE, '#value' => NULL, '#process' => array('form_expand_ahah'));
   $type['token'] = array('#input' => TRUE);
+
+  // Backports from D7
+  $type['html_tag'] = array(
+    '#theme' => 'html_tag',
+    '#pre_render' => array('drupal_pre_render_conditional_comments'),
+    '#attributes' => array(),
+    '#value' => NULL,
+  );  
+  $type['styles'] = array(
+    '#items' => array(),
+    '#pre_render' => array('drupal_pre_render_styles'),
+    '#post_render' => array('drupal_post_render_styles'),
+    '#group_callback' => 'drupal_group_css',
+    '#aggregate_callback' => 'drupal_aggregate_css',
+  );
+
   return $type;
 }
 
@@ -484,6 +500,119 @@ function system_menu() {
 }
 
 /**
+ * Implements hook_library(). Backport from D7.
+ */
+function system_library() {
+  // Drupal's Ajax framework.
+  $libraries['drupal.ahah'] = array(
+    'title' => 'Drupal AHAH',
+    'version' => VERSION,
+    'js' => array(
+      'misc/ahah.js' => array('group' => JS_LIBRARY, 'weight' => 2),
+    ),
+    'dependencies' => array(
+      array('system', 'drupal.progress'),
+    ),
+  );
+
+  // Drupal's batch API.
+  $libraries['drupal.batch'] = array(
+    'title' => 'Drupal batch API',
+    'version' => VERSION,
+    'js' => array(
+      'misc/batch.js' => array('group' => JS_DEFAULT, 'cache' => FALSE),
+    ),
+    'dependencies' => array(
+      array('system', 'drupal.progress'),
+    ),
+  );
+
+  // Drupal's progress indicator.
+  $libraries['drupal.progress'] = array(
+    'title' => 'Drupal progress indicator',
+    'version' => VERSION,
+    'js' => array(
+      'misc/progress.js' => array('group' => JS_DEFAULT),
+    ),
+  );
+
+  // Drupal's form library.
+  $libraries['drupal.form'] = array(
+    'title' => 'Drupal form library',
+    'version' => VERSION,
+    'js' => array(
+      'misc/form.js' => array('group' => JS_LIBRARY, 'weight' => 1),
+    ),
+  );
+
+  // Drupal's collapsible fieldset.
+  $libraries['drupal.collapse'] = array(
+    'title' => 'Drupal collapsible fieldset',
+    'version' => VERSION,
+    'js' => array(
+      'misc/collapse.js' => array('group' => JS_DEFAULT),
+    ),
+    'dependencies' => array(
+      // collapse.js relies on drupalGetSummary in form.js
+      array('system', 'drupal.form'),
+    ),
+  );
+
+  // Drupal's resizable textarea.
+  $libraries['drupal.textarea'] = array(
+    'title' => 'Drupal resizable textarea',
+    'version' => VERSION,
+    'js' => array(
+      'misc/textarea.js' => array('group' => JS_DEFAULT),
+    ),
+  );
+
+  // Drupal's autocomplete widget.
+  $libraries['drupal.autocomplete'] = array(
+    'title' => 'Drupal autocomplete',
+    'version' => VERSION,
+    'js' => array(
+      'misc/autocomplete.js' => array('group' => JS_DEFAULT),
+    ),
+  );
+
+  // jQuery.
+  $libraries['jquery'] = array(
+    'title' => 'jQuery',
+    'website' => 'http://jquery.com',
+    'version' => '1.4.4',
+    'js' => array(
+      'misc/jquery.js' => array('group' => JS_LIBRARY, 'weight' => -20),
+    ),
+  );
+
+  // jQuery Form Plugin.
+  $libraries['jquery.form'] = array(
+    'title' => 'jQuery Form Plugin',
+    'website' => 'http://malsup.com/jquery/form/',
+    'version' => '2.52',
+    'js' => array(
+      'misc/jquery.form.js' => array(),
+    )
+  );
+
+  // Farbtastic.
+  $libraries['farbtastic'] = array(
+    'title' => 'Farbtastic',
+    'website' => 'http://code.google.com/p/farbtastic/',
+    'version' => '1.2',
+    'js' => array(
+      'misc/farbtastic/farbtastic.js' => array(),
+    ),
+    'css' => array(
+      'misc/farbtastic/farbtastic.css' => array(),
+    ),
+  );
+
+  return $libraries;
+}
+
+/**
  * Menu item access callback - only admin or enabled themes can be accessed.
  */
 function _system_themes_access($theme) {
@@ -502,9 +631,9 @@ function system_init() {
   }
 
   // Add the CSS for this module.
-  drupal_add_css(drupal_get_path('module', 'system') .'/defaults.css', 'module');
-  drupal_add_css(drupal_get_path('module', 'system') .'/system.css', 'module');
-  drupal_add_css(drupal_get_path('module', 'system') .'/system-menus.css', 'module');
+  drupal_add_css(drupal_get_path('module', 'system') .'/defaults.css', array('group' => CSS_SYSTEM, 'every_page' => TRUE));
+  drupal_add_css(drupal_get_path('module', 'system') .'/system.css', array('group' => CSS_SYSTEM, 'every_page' => TRUE));
+  drupal_add_css(drupal_get_path('module', 'system') .'/system-menus.css', array('group' => CSS_SYSTEM, 'every_page' => TRUE));
 }
 
 /**
@@ -2143,4 +2272,39 @@ function _system_update_bootstrap_status() {
   }
   // Reset the cached list of bootstrap modules.
   system_list_reset();
+}
+
+/**
+ * Prefixes all values in an .info file array with a given path. Backport from D7
+ *
+ * This helper function is mainly used to prefix all array values of an .info
+ * file property with a single given path (to the module or theme); e.g., to
+ * prefix all values of the 'stylesheets' or 'scripts' properties with the file
+ * path to the defining module/theme.
+ *
+ * @param $info
+ *   A nested array of data of an .info file to be processed.
+ * @param $path
+ *   A file path to prepend to each value in $info.
+ *
+ * @return
+ *   The $info array with prefixed values.
+ *
+ * @see _system_rebuild_module_data()
+ * @see _system_rebuild_theme_data()
+ */
+function _system_info_add_path($info, $path) {
+  foreach ($info as $key => $value) {
+    // Recurse into nested values until we reach the deepest level.
+    if (is_array($value)) {
+      $info[$key] = _system_info_add_path($info[$key], $path);
+    }
+    // Unset the original value's key and set the new value with prefix, using
+    // the original value as key, so original values can still be looked up.
+    else {
+      unset($info[$key]);
+      $info[$value] = $path . '/' . $value;
+    }
+  }
+  return $info;
 }

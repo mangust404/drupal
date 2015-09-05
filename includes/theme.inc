@@ -131,7 +131,7 @@ function _init_theme($theme, $base_theme = array(), $registry_callback = '_theme
   // And now add the stylesheets properly
   foreach ($final_stylesheets as $media => $stylesheets) {
     foreach ($stylesheets as $stylesheet) {
-      drupal_add_css($stylesheet, 'theme', $media);
+      drupal_add_css($stylesheet, array('media' => $media, 'group' => CSS_THEME, 'every_page' => TRUE));
     }
   }
 
@@ -1624,9 +1624,52 @@ function theme_xml_icon($url) {
  *   A descriptive title of the feed.
   */
 function theme_feed_icon($url, $title) {
-  if ($image = theme('image', 'misc/feed.png', t('Syndicate content'), $title)) {
-    return '<a href="'. check_url($url) .'" class="feed-icon">'. $image .'</a>';
+  $text = t('Subscribe to !feed-title', array('!feed-title' => $title));
+  if ($image = theme('image', 'misc/feed.png', $text, array('title' => $text, 'width' => 16, 'height' => 16))) {
+    return l($image, $url, array('html' => TRUE, 'attributes' => array('class' => array('feed-icon'), 'title' => $text)));
   }
+}
+
+/**
+ * Returns HTML for a generic HTML tag with attributes. Backport from D7.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - element: An associative array describing the tag:
+ *     - #tag: The tag name to output. Typical tags added to the HTML HEAD:
+ *       - meta: To provide meta information, such as a page refresh.
+ *       - link: To refer to stylesheets and other contextual information.
+ *       - script: To load JavaScript.
+ *     - #attributes: (optional) An array of HTML attributes to apply to the
+ *       tag.
+ *     - #value: (optional) A string containing tag content, such as inline
+ *       CSS.
+ *     - #value_prefix: (optional) A string to prepend to #value, e.g. a CDATA
+ *       wrapper prefix.
+ *     - #value_suffix: (optional) A string to append to #value, e.g. a CDATA
+ *       wrapper suffix.
+ */
+function theme_html_tag($element) {
+  $attributes = isset($element['#attributes']) ? drupal_attributes($element['#attributes']) : '';
+  if (!isset($element['#value'])) {
+    return '<' . $element['#tag'] . $attributes . " />\n";
+  }
+  else {
+    $output = '<' . $element['#tag'] . $attributes . '>';
+    if (isset($element['#value_prefix'])) {
+      $output .= $element['#value_prefix'];
+    }
+    $output .= $element['#value'];
+    if (isset($element['#value_suffix'])) {
+      $output .= $element['#value_suffix'];
+    }
+    $output .= '</' . $element['#tag'] . ">\n";
+    return $output;
+  }
+}
+
+function theme_styles($element) {
+  return empty($element['#children'])? '': $element['#children'];
 }
 
 /**

@@ -215,6 +215,45 @@ define('DRUPAL_ANONYMOUS_RID', 1);
 define('DRUPAL_AUTHENTICATED_RID', 2);
 
 /**
+ * The number of bytes in a kilobyte.
+ *
+ * For more information, visit http://en.wikipedia.org/wiki/Kilobyte.
+ */
+define('DRUPAL_KILOBYTE', 1024);
+
+/**
+ * The language code used when no language is explicitly assigned.
+ *
+ * Defined by ISO639-2 for "Undetermined".
+ */
+define('LANGUAGE_NONE', 'und');
+
+/**
+ * The type of language used to define the content language.
+ */
+define('LANGUAGE_TYPE_CONTENT', 'language_content');
+
+/**
+ * The type of language used to select the user interface.
+ */
+define('LANGUAGE_TYPE_INTERFACE', 'language');
+
+/**
+ * The type of language used for URLs.
+ */
+define('LANGUAGE_TYPE_URL', 'language_url');
+
+/**
+ * Language written left to right. Possible value of $language->direction.
+ */
+define('LANGUAGE_LTR', 0);
+
+/**
+ * Language written right to left. Possible value of $language->direction.
+ */
+define('LANGUAGE_RTL', 1);
+
+/**
  * No language negotiation. The default language is used.
  */
 define('LANGUAGE_NEGOTIATION_NONE', 0);
@@ -237,16 +276,6 @@ define('LANGUAGE_NEGOTIATION_PATH', 2);
  * if no language identified by domain.
  */
 define('LANGUAGE_NEGOTIATION_DOMAIN', 3);
-
-/**
- * Language written left to right. Possible value of $language->direction.
- */
-define('LANGUAGE_LTR', 0);
-
-/**
- * Language written right to left. Possible value of $language->direction.
- */
-define('LANGUAGE_RTL', 1);
 
 // Hide E_DEPRECATED messages.
 if (defined('E_DEPRECATED')) {
@@ -2000,6 +2029,22 @@ function drupal_hmac_base64($data, $key) {
   $hmac = base64_encode(pack("H*", drupal_hash_hmac_sha1((string) $data, (string) $key)));
   // Modify the hmac so it's safe to use in URLs.
   return strtr($hmac, array('+' => '-', '/' => '_', '=' => ''));
+}
+
+/**
+ * Calculates a base-64 encoded, URL-safe sha-256 hash. Backport from D7.
+ *
+ * @param $data
+ *   String to be hashed.
+ *
+ * @return
+ *   A base-64 encoded sha-256 hash, with + replaced with -, / with _ and
+ *   any = padding characters removed.
+ */
+function drupal_hash_base64($data) {
+  $hash = base64_encode(hash('sha256', $data, TRUE));
+  // Modify the hash so it's safe to use in URLs.
+  return strtr($hash, array('+' => '-', '/' => '_', '=' => ''));
 }
 
 /**
