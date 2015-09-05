@@ -234,11 +234,12 @@ function drupal_session_initialize() {
 
   // We use !empty() in the following check to ensure that blank session IDs
   // are not valid.
-  if (!empty($_COOKIE[session_name()]) || ($is_https && variable_get('https', FALSE) && !empty($_COOKIE[substr(session_name(), 1)]))) {
+  if (!empty($_COOKIE[session_name()]) || ($is_https && variable_get('https', FALSE) && !empty($_COOKIE[substr(session_name(), 1)])) || !empty($_POST)) {
     // If a session cookie exists, initialize the session. Otherwise the
     // session is only started on demand in drupal_session_commit(), making
     // anonymous users not use a session cookie unless something is stored in
     // $_SESSION. This allows HTTP proxies to cache anonymous pageviews.
+    // Form submissions also trigger initialize of the session.
     drupal_session_start();
     if (!empty($user->uid) || !empty($_SESSION)) {
       drupal_page_is_cacheable(FALSE);
