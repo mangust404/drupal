@@ -369,19 +369,21 @@ function simpletest_script_execute_batch() {
  * Run a single test (assume a Drupal bootstrapped environment).
  */
 function simpletest_script_run_one_test($test_id, $test_class) {
-  global $current_test_class;
-  // Drupal 6.
-  require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
-  $classes = simpletest_test_get_all_classes();
+  global $current_test_class, $current_test_method, $test_run_success;
+  $current_test_class = $test_class;
 
   function simpletest_shutdown() {
-    global $test_run_success, $current_test_class;
+    global $test_run_success, $current_test_class, $current_test_method;
     if(!$test_run_success) {
-      print simpletest_script_print('FATAL: Test exited unexpectedly: ' . $current_test_class . "\n", simpletest_script_color_code('fail'));
+      print simpletest_script_print('FATAL: Test execution script exited unexpectedly: ' . (empty($current_test_class)? 'unknown_class': $current_test_class) . (empty($current_test_method)? '::unknown method': '::' . $current_test_method) . "\n", simpletest_script_color_code('fail'));
     }
   }
 
   register_shutdown_function('simpletest_shutdown');
+
+  // Drupal 6.
+  require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
+  $classes = simpletest_test_get_all_classes();
 
   if(strpos($test_class, '::') !== FALSE) {
     // Run single method
@@ -394,7 +396,6 @@ function simpletest_script_run_one_test($test_id, $test_class) {
   } else {
     require_once $classes[$test_class]['file'];
 
-    $current_test_class = $test_class;
     $test = new $test_class($test_id);
     $test->run();
   }
@@ -405,7 +406,7 @@ function simpletest_script_run_one_test($test_id, $test_class) {
 
   $status = ((isset($test->results['#fail']) && $test->results['#fail'] > 0)
            || (isset($test->results['#exception']) && $test->results['#exception'] > 0) ? 'fail' : 'pass');
-  simpletest_script_print($info['name'] . ' ' . _simpletest_format_summary_line($test->results) . "\n", simpletest_script_color_code($status));
+  simpletest_script_print($info['name'] . ' ' . _simpletest_format_summary_line($test->results) . ($status == 'fail'? ' (' . $test_class . ')': '') . "\n", simpletest_script_color_code($status));
 }
 
 /**
@@ -596,7 +597,7 @@ function simpletest_script_format_result($result) {
   global $results_map, $color;
 
   $summary = sprintf("%-10.10s %-10.10s %-30.30s %-5.5s %-20.20s\n",
-    $results_map[$result->status], $result->message_group, basename($result->file), $result->line, $result->caller);
+    $results_map[$result->status], $result->message_group, basename($result->file), $result->line, isset($result->caller)? $result->caller: '(unknown)');
 
   simpletest_script_print($summary, simpletest_script_color_code($result->status));
 
