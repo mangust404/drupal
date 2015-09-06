@@ -2938,35 +2938,65 @@ function drupal_pre_render_styles($elements) {
 }
 
 /**
- * Aggregate and optimize CSS files, putting them in the files directory.
+ * Aggregates and optimizes CSS files into a cache file in the files directory.
+ * Backport from D7.
  *
- * @param $types
- *   An array of types of CSS files (e.g., screen, print) to aggregate and
- *   compress into one file.
- * @param $filename
- *   The name of the aggregate CSS file.
+ * The file name for the CSS cache file is generated from the hash of the
+ * aggregated contents of the files in $css. This forces proxies and browsers
+ * to download new CSS when the CSS changes.
+ *
+ * The cache file name is retrieved on a page load via a lookup variable that
+ * contains an associative array. The array key is the hash of the file names
+ * in $css while the value is the cache file name. The cache file is generated
+ * in two cases. First, if there is no file name value for the key, which will
+ * happen if a new file name has been added to $css or after the lookup
+ * variable is emptied to force a rebuild of the cache. Second, the cache file
+ * is generated if it is missing on disk. Old cache files are not deleted
+ * immediately when the lookup variable is emptied, but are deleted after a set
+ * period by drupal_delete_file_if_stale(). This ensures that files referenced
+ * by a cached page will still be available.
+ *
+ * @param $css
+ *   An array of CSS files to aggregate and compress into one file.
+ *
  * @return
- *   The name of the CSS file.
+ *   The URI of the CSS cache file, or FALSE if the file could not be saved.
  */
-function drupal_build_css_cache($types, $filename) {
+function drupal_build_css_cache($css) {
   $data = '';
+  $uri = '';
+  $map = variable_get('drupal_css_cache_files', array());
+  // Create a new array so that only the file names are used to create the hash.
+  // This prevents new aggregates from being created unnecessarily.
+  $css_data = array();
+  foreach ($css as $css_file) {
+    $css_data[] = $css_file['data'];
+  }
+  $key = hash('sha256', serialize($css_data));
+  if (isset($map[$key])) {
+    $uri = $map[$key];
+  }
 
-  // Create the css/ within the files folder.
-  $csspath = file_create_path('css');
-  file_check_directory($csspath, FILE_CREATE_DIRECTORY);
-
-  if (!file_exists($csspath .'/'. $filename)) {
+  if (empty($uri) || !file_exists($uri)) {
     // Build aggregate CSS file.
-    foreach ($types as $type) {
-      foreach ($type as $file => $cache) {
-        if ($cache) {
-          $contents = drupal_load_stylesheet($file, TRUE);
-          // Return the path to where this CSS file originated from.
-          $base = base_path() . dirname($file) .'/';
-          _drupal_build_css_path(NULL, $base);
-          // Prefix all paths within this CSS file, ignoring external and absolute paths.
-          $data .= preg_replace_callback('/url\([\'"]?(?![a-z]+:|\/+)([^\'")]+)[\'"]?\)/i', '_drupal_build_css_path', $contents);
+    foreach ($css as $stylesheet) {
+      // Only 'file' stylesheets can be aggregated.
+      if ($stylesheet['type'] == 'file') {
+        $contents = drupal_load_stylesheet($stylesheet['data'], TRUE);
+
+        // Build the base URL of this CSS file: start with the full URL.
+        $css_base_url = file_create_url($stylesheet['data']);
+        // Move to the parent.
+        $css_base_url = substr($css_base_url, 0, strrpos($css_base_url, '/'));
+        // Simplify to a relative URL if the stylesheet URL starts with the
+        // base URL of the website.
+        if (substr($css_base_url, 0, strlen($GLOBALS['base_root'])) == $GLOBALS['base_root']) {
+          $css_base_url = substr($css_base_url, strlen($GLOBALS['base_root']));
         }
+
+        _drupal_build_css_path(NULL, $css_base_url . '/');
+        // Anchor all paths in the CSS with its base URL, ignoring external and absolute paths.
+        $data .= preg_replace_callback('/url\(\s*[\'"]?(?![a-z]+:|\/+)([^\'")]+)[\'"]?\s*\)/i', '_drupal_build_css_path', $contents);
       }
     }
 
@@ -2977,10 +3007,31 @@ function drupal_build_css_cache($types, $filename) {
     $data = preg_replace($regexp, '', $data);
     $data = implode('', $matches[0]) . $data;
 
+    // Prefix filename to prevent blocking by firewalls which reject files
+    // starting with "ad*".
+    $filename = 'css_' . drupal_hash_base64($data) . '.css';
+    // Create the css/ within the files folder.
+    $csspath = file_create_path('css');
+    file_check_directory($csspath, FILE_CREATE_DIRECTORY);
+    $uri = $csspath . '/' . $filename;
     // Create the CSS file.
-    file_save_data($data, $csspath .'/'. $filename, FILE_EXISTS_REPLACE);
+    if (!file_exists($uri) && !file_save_data($data, $uri, FILE_EXISTS_REPLACE)) {
+      return FALSE;
+    }
+    // If CSS gzip compression is enabled, clean URLs are enabled (which means
+    // that rewrite rules are working) and the zlib extension is available then
+    // create a gzipped version of this file. This file is served conditionally
+    // to browsers that accept gzip using .htaccess rules.
+    if (variable_get('css_gzip_compression', TRUE) && variable_get('clean_url', 0) && extension_loaded('zlib')) {
+      if (!file_exists($uri . '.gz') && !file_save_data(gzencode($data, 9, FORCE_GZIP), $uri . '.gz', FILE_EXISTS_REPLACE)) {
+        return FALSE;
+      }
+    }
+    // Save the updated map.
+    $map[$key] = $uri;
+    variable_set('drupal_css_cache_files', $map);
   }
-  return $csspath .'/'. $filename;
+  return $uri;
 }
 
 /**
@@ -4056,26 +4107,41 @@ function drupal_add_tabledrag($table_id, $action, $relationship, $group, $subgro
 }
 
 /**
- * Aggregate JS files, putting them in the files directory.
+ * Aggregates JavaScript files into a cache file in the files directory.
+ * Backport from D7.
+ *
+ * The file name for the JavaScript cache file is generated from the hash of
+ * the aggregated contents of the files in $files. This forces proxies and
+ * browsers to download new JavaScript when the JavaScript changes.
+ *
+ * The cache file name is retrieved on a page load via a lookup variable that
+ * contains an associative array. The array key is the hash of the names in
+ * $files while the value is the cache file name. The cache file is generated
+ * in two cases. First, if there is no file name value for the key, which will
+ * happen if a new file name has been added to $files or after the lookup
+ * variable is emptied to force a rebuild of the cache. Second, the cache file
+ * is generated if it is missing on disk. Old cache files are not deleted
+ * immediately when the lookup variable is emptied, but are deleted after a set
+ * period by drupal_delete_file_if_stale(). This ensures that files referenced
+ * by a cached page will still be available.
  *
  * @param $files
- *   An array of JS files to aggregate and compress into one file.
- * @param $filename
- *   The name of the aggregate JS file.
+ *   An array of JavaScript files to aggregate and compress into one file.
+ *
  * @return
- *   The name of the JS file.
+ *   The URI of the cache file, or FALSE if the file could not be saved.
  */
-function drupal_build_js_cache($files, $filename) {
+function drupal_build_js_cache($files) {
   $contents = '';
   $uri = '';
   $map = variable_get('drupal_js_cache_files', array());
   // Create a new array so that only the file names are used to create the hash.
   // This prevents new aggregates from being created unnecessarily.
-  $js_data = '';
+  $js_data = array();
   foreach ($files as $file) {
-    $js_data .= $file['data'];
+    $js_data[] = $file['data'];
   }
-  $key = hash('sha256', $js_data);
+  $key = hash('sha256', serialize($js_data));
   if (isset($map[$key])) {
     $uri = $map[$key];
   }
@@ -4088,20 +4154,17 @@ function drupal_build_js_cache($files, $filename) {
         $contents .= file_get_contents($path) . ";\n";
       }
     }
-
     // Prefix filename to prevent blocking by firewalls which reject files
     // starting with "ad*".
     $filename = 'js_' . drupal_hash_base64($contents) . '.js';
-
     // Create the js/ within the files folder.
     $jspath = file_create_path('js');
     file_check_directory($jspath, FILE_CREATE_DIRECTORY);
-
-    $uri = $jspath .'/'. $filename;
+    $uri = $jspath . '/' . $filename;
+    // Create the JS file.
     if (!file_exists($uri) && !file_save_data($contents, $uri, FILE_EXISTS_REPLACE)) {
       return FALSE;
     }
-
     // If JS gzip compression is enabled, clean URLs are enabled (which means
     // that rewrite rules are working) and the zlib extension is available then
     // create a gzipped version of this file. This file is served conditionally
@@ -4111,7 +4174,6 @@ function drupal_build_js_cache($files, $filename) {
         return FALSE;
       }
     }
-
     $map[$key] = $uri;
     variable_set('drupal_js_cache_files', $map);
   }
