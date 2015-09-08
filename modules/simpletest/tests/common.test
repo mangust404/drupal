@@ -859,7 +859,6 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
    * Test CSS ordering.
    */
   function testRenderOrder() {
-    $GLOBALS['debug'] = TRUE;
     // A module CSS file.
     drupal_add_css(drupal_get_path('module', 'simpletest') . '/simpletest.css');
     // A few system CSS files, ordered in a strange way.
@@ -940,6 +939,41 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     $query_string = variable_get('css_js_query_string', '0');
     $this->assertRaw(drupal_get_path('module', 'simpletest') . '/tests/test.css?' . $query_string, 'Query string was appended correctly to css.');
     $this->assertRaw(drupal_get_path('module', 'simpletest') . '/tests/test-fake.css?arg1=value1&amp;arg2=value2', 'Query string not escaped on a URI.');
+  }
+
+  /**
+   * Tests that aggregated css file contains correct url() parameters.
+   */
+  function testPreprocessCSSURL() {
+    variable_set('preprocess_css', 1);
+    $this->drupalGet('');
+
+    // Stylesheet URL may be the href of a LINK tag or in an @import statement
+    // of a STYLE tag.
+    $this->assertTrue(preg_match_all('/(href="|url\(")((\/|' . preg_quote($GLOBALS['base_url'] . '/', '/') . ')?([^"]+)\.css)/', $this->drupalGetContent(), $matches), 'Stylesheets found');
+
+    // Check all the stylesheets contents
+    foreach($matches[2] as $stylesheet) {
+      if($stylesheet{0} == '/') {
+        $stylesheet = substr($stylesheet, 1);
+      }
+      // If it's a local file
+      if(file_exists($stylesheet)) {
+        $contents = file_get_contents($stylesheet);
+
+        // Fetch all the url() contents
+        if(preg_match_all('/url\(["]?([^\)]+)["]?\)/', $contents, $url_matches)) {
+          foreach($url_matches[1] as $file) {
+            if($file{0} == '/') {
+              $file = substr($file, 1);
+              // It should be a local file
+              $this->assertTrue(is_file($file), 'File ' . $file . ' exists');
+            }
+          }
+        }
+      }
+    }
+    //
   }
 }
 

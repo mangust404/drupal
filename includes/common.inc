@@ -2985,7 +2985,7 @@ function drupal_build_css_cache($css) {
         $contents = drupal_load_stylesheet($stylesheet['data'], TRUE);
 
         // Build the base URL of this CSS file: start with the full URL.
-        $css_base_url = file_create_url($stylesheet['data']);
+        $css_base_url = url($stylesheet['data']);
         // Move to the parent.
         $css_base_url = substr($css_base_url, 0, strrpos($css_base_url, '/'));
         // Simplify to a relative URL if the stylesheet URL starts with the
