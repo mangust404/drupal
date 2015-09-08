@@ -68,7 +68,7 @@
  *   The rendered form.
  */
 function drupal_get_form($form_id) {
-  $form_state = array('storage' => NULL, 'submitted' => FALSE);
+  $form_state = form_state_defaults();
 
   $args = func_get_args();
   $cacheable = FALSE;
@@ -100,6 +100,11 @@ function drupal_get_form($form_id) {
       $args_temp[0] = &$form_state;
       array_unshift($args_temp, $form_id);
 
+      // Remove $form_id from the arguments.
+      array_shift($args);
+      $form_state['build_info']['args'] = $args;
+
+
       $form = call_user_func_array('drupal_retrieve_form', $args_temp);
       $form_build_id = 'form-'. drupal_random_key();
       $form['#build_id'] = $form_build_id;
@@ -118,11 +123,17 @@ function drupal_get_form($form_id) {
     // altering the $form_state variable, which is passed into them by
     // reference.
     drupal_process_form($form_id, $form, $form_state);
-    if ($cacheable && !empty($form['#cache'])) {
+
+    /*if ($cacheable && !empty($form['#cache'])) {
       // Caching is done past drupal_process_form so #process callbacks can
       // set #cache.
       form_set_cache($form_build_id, $original_form, $form_state);
-    }
+    }*/
+  }
+
+  // Don't rebuild or cache form submissions invoked via drupal_form_submit().
+  if (!empty($form['#programmed'])) {
+    return;
   }
 
   // Most simple, single-step forms will be finished by this point --
@@ -139,9 +150,9 @@ function drupal_get_form($form_id) {
   // in the latest $form_state in addition to any other variables passed
   // into drupal_get_form().
 
-  if ((!empty($form_state['storage']) || !empty($form_state['rebuild'])) && !empty($form_state['process_input']) && !form_get_errors()) {
-    $form = drupal_rebuild_form($form_id, $form_state, $args);
-  }
+/*  if ((!empty($form_state['storage']) || !empty($form_state['rebuild'])) && !empty($form_state['process_input']) && !form_get_errors()) {
+    $form = drupal_rebuild_form($form_id, $form_state, $args, $form);
+  }*/
 
   // If we haven't redirected to a new location by now, we want to
   // render whatever form array is currently in hand.
@@ -178,14 +189,19 @@ function drupal_get_form($form_id) {
  *   are getting a form from the cache, use $form['#parameters'] to shift off
  *   the $form_id from its beginning then the resulting array can be used as
  *   $arg here.
- * @param $form_build_id
- *   If the AHAH callback calling this function only alters part of the form,
- *   then pass in the existing form_build_id so we can re-cache with the same
- *   csid.
+ * @param $old_form
+ *   (optional) A previously built $form. Used to retain the #build_id and
+ *   #action properties in Ajax callbacks and similar partial form rebuilds. The
+ *   only properties copied from $old_form are the ones which both exist in
+ *   $old_form and for which $form_state['rebuild_info']['copy'][PROPERTY] is
+ *   TRUE. If $old_form is not passed, the entire $form is rebuilt freshly.
+ *   'rebuild_info' needs to be a separate top-level property next to
+ *   'build_info', since the contained data must not be cached.
+ *
  * @return
  *   The newly built form.
  */
-function drupal_rebuild_form($form_id, &$form_state, $args, $form_build_id = NULL) {
+function drupal_rebuild_form($form_id, &$form_state, $args, $old_form = NULL) {
   // Remove the first argument. This is $form_id.when called from
   // drupal_get_form and the original $form_state when called from some AHAH
   // callback. Neither is needed. After that, put in the current state.
@@ -194,46 +210,121 @@ function drupal_rebuild_form($form_id, &$form_state, $args, $form_build_id = NUL
   array_unshift($args, $form_id);
   $form = call_user_func_array('drupal_retrieve_form', $args);
 
-  if (!isset($form_build_id)) {
-    // We need a new build_id for the new version of the form.
-    $form_build_id = 'form-'. drupal_random_key();
+  // If only parts of the form will be returned to the browser (e.g., Ajax or
+  // RIA clients), or if the form already had a new build ID regenerated when it
+  // was retrieved from the form cache, reuse the existing #build_id.
+  // Otherwise, a new #build_id is generated, to not clobber the previous
+  // build's data in the form cache; also allowing the user to go back to an
+  // earlier build, make changes, and re-submit.
+  // @see drupal_prepare_form()
+  $enforce_old_build_id = isset($old_form['#build_id']) && !empty($form_state['rebuild_info']['copy']['#build_id']);
+  $old_form_is_mutable_copy = isset($old_form['#build_id_old']);
+  if ($enforce_old_build_id || $old_form_is_mutable_copy) {
+    $form['#build_id'] = $old_form['#build_id'];
+    if ($old_form_is_mutable_copy) {
+      $form['#build_id_old'] = $old_form['#build_id_old'];
+    }
   }
-  $form['#build_id'] = $form_build_id;
+  else {
+    if (isset($old_form['#build_id'])) {
+      $form['#build_id_old'] = $old_form['#build_id'];
+    }
+    $form['#build_id'] = 'form-' . drupal_random_key();
+  }
+
   drupal_prepare_form($form_id, $form, $form_state);
 
   // Now, we cache the form structure so it can be retrieved later for
   // validation. If $form_state['storage'] is populated, we'll also cache
   // it so that it can be used to resume complex multi-step processes.
-  form_set_cache($form_build_id, $form, $form_state);
+  if(empty($form['#no_cache'])) {
+    form_set_cache($form['#build_id'], $form, $form_state);
+  }
 
-  // Clear out all post data, as we don't want the previous step's
-  // data to pollute this one and trigger validate/submit handling,
-  // then process the form for rendering.
-  $_POST = array();
-  $form['#post'] = array();
-  drupal_process_form($form_id, $form, $form_state);
-  return $form;
+  // We should keep the current form elements #post.
+  // Doing it in so ugly way becase we don't have a $form_state['input'].
+  form_copy_post($form, $old_form);
+
+  return form_builder($form_id, $form, $form_state);
+  //drupal_process_form($form_id, $form, $form_state);
+  //return $form;
+}
+
+/**
+ * Recursively copy #post attribute from old_form to new form
+ */
+function form_copy_post(&$form, $old_form) {
+  foreach(element_children($form) as $key) {
+    if(isset($old_form[$key])) {
+      form_copy_post($form[$key], $old_form[$key]);
+    }
+  }
+  if(isset($old_form['#post'])) {
+    $form['#post'] = $old_form['#post'];
+  }
+}
+
+/**
+ * Fetch a form from cache.
+ */
+function form_get_cache($form_build_id, &$form_state) {
+  global $user;
+  if ($cached = cache_get('form_'. $form_build_id, 'cache_form')) {
+    $form = $cached->data;
+    if ((isset($form['#cache_token']) && drupal_valid_token($form['#cache_token'])) || (!isset($form['#cache_token']) && !$user->uid)) {
+      if ($cached = cache_get('form_state_' . $form_build_id, 'cache_form')) {
+        // Re-populate $form_state for subsequent rebuilds.
+        $form_state = $cached->data + $form_state;
+
+      }
+
+      // Generate a new #build_id if the cached form was rendered on a cacheable
+      // page.
+      if (!empty($form['#immutable'])) {
+        $form['#build_id_old'] = $form['#build_id'];
+        $form['#build_id'] = 'form-' . drupal_random_key();
+        $form['form_build_id']['#value'] = $form['#build_id'];
+        $form['form_build_id']['#id'] = $form['#build_id'];
+        unset($form['#immutable']);
+
+        form_build_id_map($form_build_id, $form['#build_id']);
+      }
+      return $form;
+    }
+  }
 }
 
 /**
  * Store a form in the cache.
  */
 function form_set_cache($form_build_id, $form, $form_state) {
-  global $user;
   // 6 hours cache life time for forms should be plenty.
   $expire = 21600;
 
-  if ($user->uid) {
-    $form['#cache_token'] = drupal_get_token();
+  // Ensure that the form build_id embedded in the form structure is the same as
+  // the one passed in as a parameter. This is an additional safety measure to
+  // prevent legacy code operating directly with form_get_cache and
+  // form_set_cache from accidentally overwriting immutable form state.
+  if ($form['#build_id'] != $form_build_id) {
+    watchdog('form', 'Form build-id mismatch detected while attempting to store a form in the cache.', array(), WATCHDOG_ERROR);
+    return;
   }
-  elseif (variable_get('cache', CACHE_DISABLED) != CACHE_DISABLED && $_SERVER['REQUEST_METHOD'] == 'GET' && page_get_cache(TRUE)) {
-    $form['#immutable'] = TRUE;
+
+  // Cache form structure.
+  if (isset($form)) {
+    if ($GLOBALS['user']->uid) {
+      $form['#cache_token'] = drupal_get_token();
+    }
+    elseif (variable_get('cache', CACHE_DISABLED) != CACHE_DISABLED && drupal_page_is_cacheable()) {
+      $form['#immutable'] = TRUE;
+    }
+    unset($form['#build_id_old']);
+    cache_set('form_' . $form_build_id, $form, 'cache_form', REQUEST_TIME + $expire);
   }
-  $form_build_id_old = $form_build_id;
-  $form_build_id = form_build_id_map($form_build_id_old);
-  cache_set('form_'. $form_build_id, $form, 'cache_form', time() + $expire);
-  if (!empty($form_state['storage'])) {
-    cache_set('storage_'. $form_build_id, $form_state['storage'], 'cache_form', time() + $expire);
+
+  // Cache form state.
+  if ($data = array_diff_key($form_state, array_flip(form_state_keys_no_cache()))) {
+    cache_set('form_state_' . $form_build_id, $data, 'cache_form', REQUEST_TIME + $expire);
   }
 
   // If form_set_cache is called in the context of an ahah handler inform the
@@ -248,30 +339,25 @@ function form_set_cache($form_build_id, $form, $form_state) {
 }
 
 /**
- * Fetch a form from cache.
+ * Returns an array of $form_state keys that shouldn't be cached.
+ * Backport from D7.
  */
-function form_get_cache($form_build_id, &$form_state) {
-  global $user;
-  if ($cached = cache_get('form_'. $form_build_id, 'cache_form')) {
-    $form = $cached->data;
-    if ((isset($form['#cache_token']) && drupal_valid_token($form['#cache_token'])) || (!isset($form['#cache_token']) && !$user->uid)) {
-      if ($cached = cache_get('storage_'. $form_build_id, 'cache_form')) {
-        $form_state['storage'] = $cached->data;
-      }
-
-      // Generate a new #build_id if the cached form was rendered on a cacheable
-      // page.
-      if (!empty($form['#immutable'])) {
-        $form['#build_id'] = 'form-' . drupal_random_key();
-        $form['form_build_id']['#value'] = $form['#build_id'];
-        $form['form_build_id']['#id'] = $form['#build_id'];
-        unset($form['#immutable']);
-
-        form_build_id_map($form_build_id, $form['#build_id']);
-      }
-      return $form;
-    }
-  }
+function form_state_keys_no_cache() {
+  return array(
+    // Public properties defined by form constructors and form handlers.
+    'must_validate',
+    'rebuild',
+    'redirect',
+    // Internal properties defined by form processing.
+    'buttons',
+    'triggering_element',
+    'clicked_button',
+    'submit_handlers',
+    'submitted',
+    'executed',
+    'validate_handlers',
+    'values',
+  );
 }
 
 /**
@@ -339,15 +425,18 @@ function form_build_id_map($form_build_id, $new_build_id = NULL) {
 function drupal_execute($form_id, &$form_state) {
   $args = func_get_args();
 
+  $form_state += form_state_defaults();
   // Make sure $form_state is passed around by reference.
   $args[1] = &$form_state;
 
   $form = call_user_func_array('drupal_retrieve_form', $args);
+  $form['#programmed'] = TRUE;
   $form['#post'] = $form_state['values'];
+  $form['#post']['form_id'] = $form_id;
 
   // Reset form validation.
   $form_state['must_validate'] = TRUE;
-  form_set_error(NULL, '', TRUE);
+  form_clear_error();
 
   drupal_prepare_form($form_id, $form, $form_state);
   drupal_process_form($form_id, $form, $form_state);
@@ -446,7 +535,13 @@ function drupal_retrieve_form($form_id, &$form_state) {
 function drupal_process_form($form_id, &$form, &$form_state) {
   $form_state['values'] = array();
 
+  // form_builder() finishes building the form by calling element #process
+  // functions and mapping user input, if any, to #value properties, and also
+  // storing the values in $form_state['values']. We need to retain the
+  // unprocessed $form in case it needs to be cached.
+  $unprocessed_form = $form;
   $form = form_builder($form_id, $form, $form_state);
+
   // Only process the form if it is programmed or the form_id coming
   // from the POST data is set and matches the current form_id.
   if ((!empty($form['#programmed'])) || (!empty($form['#post']) && (isset($form['#post']['form_id']) && ($form['#post']['form_id'] == $form_id)))) {
@@ -458,7 +553,10 @@ function drupal_process_form($form_id, &$form, &$form_state) {
     // cache when a form is processed, so scenerios that result in
     // the form being built behind the scenes and again for the
     // browser don't increment all the element IDs needlessly.
-    form_clean_id(NULL, TRUE);
+    if (!form_get_errors()) {
+      // In case of errors, do not break HTML IDs of other forms.
+      drupal_static_reset('form_clean_id');
+    }
 
     if ((!empty($form_state['submitted'])) && !form_get_errors() && empty($form_state['rebuild'])) {
       $form_state['redirect'] = NULL;
@@ -489,6 +587,9 @@ function drupal_process_form($form_id, &$form, &$form_state) {
         // after the batch is processed.
       }
 
+      // Set a flag to indicate that the form has been processed and executed.
+      $form_state['executed'] = TRUE;
+
       // If no submit handlers have populated the $form_state['storage']
       // bundle, and the $form_state['rebuild'] flag has not been set,
       // we're finished and should redirect to a new destination page
@@ -496,10 +597,49 @@ function drupal_process_form($form_id, &$form, &$form_state) {
       // if one hasn't). If the form was called by drupal_execute(),
       // however, we'll skip this and let the calling function examine
       // the resulting $form_state bundle itself.
-      if (!$form['#programmed'] && empty($form_state['rebuild']) && empty($form_state['storage'])) {
+      if (!$form['#programmed'] && empty($form_state['rebuild'])) {
         drupal_redirect_form($form, $form_state['redirect']);
       }
     }
+
+    // Don't rebuild or cache form submissions invoked via drupal_form_submit().
+    if (!empty($form['#programmed'])) {
+      return;
+    }
+
+    // If $form_state['rebuild'] has been set and input has been processed
+    // without validation errors, we are in a multi-step workflow that is not
+    // yet complete. A new $form needs to be constructed based on the changes
+    // made to $form_state during this request. Normally, a submit handler sets
+    // $form_state['rebuild'] if a fully executed form requires another step.
+    // However, for forms that have not been fully executed (e.g., Ajax
+    // submissions triggered by non-buttons), there is no submit handler to set
+    // $form_state['rebuild']. It would not make sense to redisplay the
+    // identical form without an error for the user to correct, so we also
+    // rebuild error-free non-executed forms, regardless of
+    // $form_state['rebuild'].
+    // @todo D8: Simplify this logic; considering Ajax and non-HTML front-ends,
+    //   along with element-level #submit properties, it makes no sense to have
+    //   divergent form execution based on whether the triggering element has
+    //   #executes_submit_callback set to TRUE.
+    if (($form_state['rebuild'] || !$form_state['executed']) && !form_get_errors()) {
+      // Form building functions (e.g., _form_builder_handle_input_element())
+      // may use $form_state['rebuild'] to determine if they are running in the
+      // context of a rebuild, so ensure it is set.
+      $form_state['rebuild'] = TRUE;
+      $form = drupal_rebuild_form($form_id, $form_state, $form_state['build_info']['args'], $form);
+    }
+  }
+
+  // After processing the form, the form builder or a #process callback may
+  // have set $form_state['cache'] to indicate that the form and form state
+  // shall be cached. But the form may only be cached if the '#cache' property
+  // is not set to TRUE. Only cache $form as it was prior to form_builder(),
+  // because form_builder() must run for each request to accommodate new user
+  // input. Rebuilt forms are not cached here, because drupal_rebuild_form()
+  // wile take care of that.
+  if (!empty($form['#build_id']) && empty($form_state['rebuild']) && !empty($form['#cache']) && empty($form['#no_cache'])) {
+    form_set_cache($form['#build_id'], $unprocessed_form, $form_state);
   }
 }
 
@@ -584,6 +724,17 @@ function drupal_prepare_form($form_id, &$form, &$form_state) {
   drupal_alter($hooks, $form, $form_state, $form_id);
 }
 
+/**
+ * Helper function to call form_set_error() if there is a token error.
+ */
+function _drupal_invalid_token_set_form_error() {
+  $path = current_path();
+  $query = drupal_get_query_parameters();
+  $url = url($path, array('query' => $query));
+
+  // Setting this error will cause the form to fail validation.
+  form_set_error('form_token', t('The form has become outdated. Copy any unsaved work in the form below and then <a href="@link">reload this page</a>.', array('@link' => $url)));
+}
 
 /**
  * Validates user-submitted form data from the $form_state using
@@ -605,7 +756,7 @@ function drupal_prepare_form($form_id, &$form, &$form_state) {
  *   web service requests, or other expensive requests that should
  *   not be repeated in the submission step.
  */
-function drupal_validate_form($form_id, $form, &$form_state) {
+function drupal_validate_form($form_id, &$form, &$form_state) {
   static $validated_forms = array();
 
   if (isset($validated_forms[$form_id]) && empty($form_state['must_validate'])) {
@@ -616,8 +767,7 @@ function drupal_validate_form($form_id, $form, &$form_state) {
   // matches the current user's session.
   if (isset($form['#token'])) {
     if (!drupal_valid_token($form_state['values']['form_token'], $form['#token']) || !empty($form_state['invalid_token'])) {
-      // Setting this error will cause the form to fail validation.
-      form_set_error('form_token', t('Validation error, please try again. If this error persists, please contact the site administrator.'));
+      _drupal_invalid_token_set_form_error();
 
       // Stop here and don't run any further validation handlers, because they
       // could invoke non-safe operations which opens the door for CSRF
@@ -666,6 +816,11 @@ function drupal_render_form($form_id, &$form) {
  *   to if none is specified by the form.
  */
 function drupal_redirect_form($form, $redirect = NULL) {
+  // Skip redirection for form submissions invoked via drupal_form_submit().
+  if (!empty($form['#programmed'])) {
+    return;
+  }
+
   $goto = NULL;
   if (isset($redirect)) {
     $goto = $redirect;
@@ -682,7 +837,7 @@ function drupal_redirect_form($form, $redirect = NULL) {
         drupal_goto($goto);
       }
     }
-    drupal_goto($_GET['q']);
+    drupal_goto(current_path(), array('query' => drupal_get_query_parameters()));
   }
 }
 
@@ -707,7 +862,7 @@ function drupal_redirect_form($form, $redirect = NULL) {
  *   A unique string identifying the form for validation, submission,
  *   theming, and hook_form_alter functions.
  */
-function _form_validate($elements, &$form_state, $form_id = NULL) {
+function _form_validate(&$elements, &$form_state, $form_id = NULL) {
   static $complete_form;
 
   // Also used in the installer, pre-database setup.
@@ -721,15 +876,8 @@ function _form_validate($elements, &$form_state, $form_id = NULL) {
   }
   // Validate the current input.
   if (!isset($elements['#validated']) || !$elements['#validated']) {
+    // The following errors are always shown.
     if (isset($elements['#needs_validation'])) {
-      // Make sure a value is passed when the field is required.
-      // A simple call to empty() will not cut it here as some fields, like
-      // checkboxes, can return a valid value of '0'. Instead, check the
-      // length if it's a string, and the item count if it's an array.
-      if ($elements['#required'] && (!count($elements['#value']) || (is_string($elements['#value']) && strlen(trim($elements['#value'])) == 0))) {
-        form_error($elements, $t('!name field is required.', array('!name' => $elements['#title'])));
-      }
-
       // Verify that the value is not longer than #maxlength.
       if (isset($elements['#maxlength']) && drupal_strlen($elements['#value']) > $elements['#maxlength']) {
         form_error($elements, $t('!name cannot be longer than %max characters but is currently %length characters long.', array('!name' => empty($elements['#title']) ? $elements['#parents'][0] : $elements['#title'], '%max' => $elements['#maxlength'], '%length' => drupal_strlen($elements['#value']))));
@@ -743,7 +891,7 @@ function _form_validate($elements, &$form_state, $form_id = NULL) {
           $options = $elements['#options'];
         }
         if (is_array($elements['#value'])) {
-          $value = $elements['#type'] == 'checkboxes' ? array_keys(array_filter($elements['#value'])) : $elements['#value'];
+          $value = in_array($elements['#type'], array('checkboxes')) ? array_keys($elements['#value']) : $elements['#value'];
           foreach ($value as $v) {
             if (!isset($options[$v])) {
               form_error($elements, $t('An illegal choice has been detected. Please contact the site administrator.'));
@@ -751,9 +899,46 @@ function _form_validate($elements, &$form_state, $form_id = NULL) {
             }
           }
         }
+        // Non-multiple select fields always have a value in HTML. If the user
+        // does not change the form, it will be the value of the first option.
+        // Because of this, form validation for the field will almost always
+        // pass, even if the user did not select anything. To work around this
+        // browser behavior, required select fields without a #default_value get
+        // an additional, first empty option. In case the submitted value is
+        // identical to the empty option's value, we reset the element's value
+        // to NULL to trigger the regular #required handling below.
+        // @see form_process_select()
+        elseif ($elements['#type'] == 'select' && !$elements['#multiple'] && $elements['#required'] && !isset($elements['#default_value']) && $elements['#value'] === $elements['#empty_value']) {
+          $elements['#value'] = NULL;
+          form_set_value($elements, NULL, $form_state);
+        }
         elseif (!isset($options[$elements['#value']])) {
           form_error($elements, $t('An illegal choice has been detected. Please contact the site administrator.'));
           watchdog('form', 'Illegal choice %choice in %name element.', array('%choice' => $elements['#value'], '%name' => empty($elements['#title']) ? $elements['#parents'][0] : $elements['#title']), WATCHDOG_ERROR);
+        }
+      }
+    }
+
+    // Make sure a value is passed when the field is required.
+    if (isset($elements['#needs_validation']) && $elements['#required']) {
+      // A simple call to empty() will not cut it here as some fields, like
+      // checkboxes, can return a valid value of '0'. Instead, check the
+      // length if it's a string, and the item count if it's an array.
+      // An unchecked checkbox has a #value of integer 0, different than string
+      // '0', which could be a valid value.
+      $is_empty_multiple = (!count($elements['#value']));
+      $is_empty_string = (is_string($elements['#value']) && drupal_strlen(trim($elements['#value'])) == 0);
+      $is_empty_value = ($elements['#value'] === 0);
+
+      if ($is_empty_multiple || $is_empty_string || $is_empty_value) {
+        // Although discouraged, a #title is not mandatory for form elements. In
+        // case there is no #title, we cannot set a form error message.
+        // Instead of setting no #title, form constructors are encouraged to set
+        // #title_display to 'invisible' to improve accessibility.
+        if (isset($elements['#title'])) {
+          form_error($elements, $t('!name field is required.', array('!name' => $elements['#title'])));
+        } else {
+          form_error($elements, $t('Field is required.'));
         }
       }
     }
@@ -842,7 +1027,7 @@ function form_execute_handlers($type, &$form, &$form_state) {
  *   form_get_error instead.
  */
 function form_set_error($name = NULL, $message = '', $reset = FALSE) {
-  static $form = array();
+  $form = &drupal_static(__FUNCTION__, array());
   if ($reset) {
     $form = array();
   }
@@ -853,6 +1038,14 @@ function form_set_error($name = NULL, $message = '', $reset = FALSE) {
     }
   }
   return $form;
+}
+
+/**
+ * Clears all errors against all form elements made by form_set_error().
+ * Backport from D7.
+ */
+function form_clear_error() {
+  drupal_static_reset('form_set_error');
 }
 
 /**
@@ -932,9 +1125,10 @@ function form_builder($form_id, $form, &$form_state) {
       if (isset($form['#token']) && isset($form['#post']) && (isset($form['#post']['form_id']) && $form['#post']['form_id'] == $form_id)) {
         $form_state['invalid_token'] = FALSE;
         if (empty($form['#post']['form_token']) || !drupal_valid_token($form['#post']['form_token'], $form['#token'])) {
-          // Setting this error will cause the form to fail validation.
-          form_set_error('form_token', t('Validation error, please try again. If this error persists, please contact the site administrator.'));
-          // This value is checked in _form_builder_handle_input_element().
+          // Set an early form error to block certain input processing since that
+          // opens the door for CSRF vulnerabilities.
+          _drupal_invalid_token_set_form_error();
+          // This value is checked in _z_handle_input_element().
           $form_state['invalid_token'] = TRUE;
           // Make sure file uploads do not get processed.
           $_FILES = array();
@@ -954,7 +1148,10 @@ function form_builder($form_id, $form, &$form_state) {
   // Recurse through all child elements.
   $count = 0;
   foreach (element_children($form) as $key) {
-    $form[$key]['#post'] = $form['#post'];
+    // Workaround to keep a previous form state when form is being rebuilt
+    if(!isset($form[$key]['#post'])) {
+      $form[$key]['#post'] = $form['#post'];
+    }
     $form[$key]['#programmed'] = $form['#programmed'];
     // Don't squash an existing tree value.
     if (!isset($form[$key]['#tree'])) {
@@ -964,6 +1161,14 @@ function form_builder($form_id, $form, &$form_state) {
     // Deny access to child elements if parent is denied.
     if (isset($form['#access']) && !$form['#access']) {
       $form[$key]['#access'] = FALSE;
+    }
+
+    // Make child elements inherit their parent's #disabled and #allow_focus
+    // values unless they specify their own.
+    foreach (array('#disabled', '#allow_focus') as $property) {
+      if (isset($form[$property]) && !isset($form[$key][$property])) {
+        $form[$key][$property] = $form[$property];
+      }
     }
 
     // Don't squash existing parents value.
@@ -1023,6 +1228,26 @@ function form_builder($form_id, $form, &$form_state) {
 }
 
 /**
+ * Retrieves default values for the $form_state array.
+ * Backport from D7.
+ */
+function form_state_defaults() {
+  return array(
+    'rebuild' => FALSE,
+    'redirect' => NULL,
+    // @todo 'args' is usually set, so no other default 'build_info' keys are
+    //   appended via += form_state_defaults().
+    'build_info' => array(
+      'args' => array(),
+    ),
+    'submitted' => FALSE,
+    'executed' => FALSE,
+    'cache' => FALSE,
+    'programmed_bypass_access_check' => TRUE,
+  );
+}
+
+/**
  * Populate the #value and #name properties of input elements so they
  * can be processed and rendered. Also, execute any #process handlers
  * attached to a specific element.
@@ -1030,9 +1255,11 @@ function form_builder($form_id, $form, &$form_state) {
 function _form_builder_handle_input_element($form_id, &$form, &$form_state, $complete_form) {
   static $safe_core_value_callbacks = array(
     'form_type_token_value',
+    'form_type_textarea_value',
     'form_type_textfield_value',
     'form_type_checkbox_value',
     'form_type_checkboxes_value',
+    'form_type_radios_value',
     'form_type_password_confirm_value',
     'form_type_select_value'
   );
@@ -1055,24 +1282,73 @@ function _form_builder_handle_input_element($form_id, &$form, &$form_state, $com
     $form['#id'] = form_clean_id('edit-'. implode('-', $form['#parents']));
   }
 
+  // Setting #disabled to TRUE results in user input being ignored, regardless
+  // of how the element is themed or whether JavaScript is used to change the
+  // control's attributes. However, it's good UI to let the user know that input
+  // is not wanted for the control. HTML supports two attributes for this:
+  // http://www.w3.org/TR/html401/interact/forms.html#h-17.12. If a form wants
+  // to start a control off with one of these attributes for UI purposes only,
+  // but still allow input to be processed if it's sumitted, it can set the
+  // desired attribute in #attributes directly rather than using #disabled.
+  // However, developers should think carefully about the accessibility
+  // implications of doing so: if the form expects input to be enterable under
+  // some condition triggered by JavaScript, how would someone who has
+  // JavaScript disabled trigger that condition? Instead, developers should
+  // consider whether a multi-step form would be more appropriate (#disabled can
+  // be changed from step to step). If one still decides to use JavaScript to
+  // affect when a control is enabled, then it is best for accessibility for the
+  // control to be enabled in the HTML, and disabled by JavaScript on document
+  // ready.
   if (!empty($form['#disabled'])) {
-    $form['#attributes']['disabled'] = 'disabled';
+    if (!empty($form['#allow_focus'])) {
+      $form['#attributes']['readonly'] = 'readonly';
+    }
+    else {
+      $form['#attributes']['disabled'] = 'disabled';
+    }
   }
+
+  // With JavaScript or other easy hacking, input can be submitted even for
+  // elements with #access=FALSE or #disabled=TRUE. For security, these must
+  // not be processed. Forms that set #disabled=TRUE on an element do not
+  // expect input for the element, and even forms submitted with
+  // drupal_execute() must not be able to get around this. Forms that set
+  // #access=FALSE on an element usually allow access for some users, so forms
+  // submitted with drupal_execute() may bypass access restriction and be
+  // treated as high-privilege users instead.
+  $process_input = empty($form['#disabled']) && (($form['#programmed'] && $form_state['programmed_bypass_access_check']) || ((!isset($form['#access']) || $form['#access']) && isset($form['#post']) && (isset($form['#post']['form_id']) && $form['#post']['form_id'] == $form_id)));
 
   if (!isset($form['#value']) && !array_key_exists('#value', $form)) {
     $function = !empty($form['#value_callback']) ? $form['#value_callback'] : 'form_type_'. $form['#type'] .'_value';
-    if (($form['#programmed']) || ((!isset($form['#access']) || $form['#access']) && isset($form['#post']) && (isset($form['#post']['form_id']) && $form['#post']['form_id'] == $form_id))) {
-      $edit = $form['#post'];
-      foreach ($form['#parents'] as $parent) {
-        $edit = isset($edit[$parent]) ? $edit[$parent] : NULL;
+    if ($process_input) {
+      // Get the input for the current element. NULL values in the input need to
+      // be explicitly distinguished from missing input. (see below)
+      $input_exists = NULL;
+      $edit = drupal_array_get_nested_value($form['#post'], $form['#parents'], $input_exists);
+      // For browser-submitted forms, the submitted values do not contain values
+      // for certain elements (empty multiple select, unchecked checkbox).
+      // During initial form processing, we add explicit NULL values for such
+      // elements in $form_state['input']. When rebuilding the form, we can
+      // distinguish elements having NULL input from elements that were not part
+      // of the initially submitted form and can therefore use default values
+      // for the latter, if required. Programmatically submitted forms can
+      // submit explicit NULL values when calling drupal_execute(), so we do
+      // not modify $form_state['input'] for them.
+      if (!$input_exists && !$form_state['rebuild'] && !$form['#programmed']) {
+        // Add the necessary parent keys to $form_state['input'] and sets the
+        // element's input value to NULL.
+        drupal_array_set_nested_value($form['#post'], $form['#parents'], NULL);
+        $input_exists = TRUE;
       }
-      if (!$form['#programmed'] || isset($edit)) {
+      // If we have input for the current element, assign it to the #value
+      // property, optionally filtered through $value_callback.
+      if ($input_exists) {
         // Call #type_value to set the form value;
         if (function_exists($function)) {
           // Skip all value callbacks except safe ones like text if the CSRF
           // token was invalid.
           if (empty($form_state['invalid_token']) || in_array($function, $safe_core_value_callbacks)) {
-            $form['#value'] = $function($form, $edit);
+            $form['#value'] = $function($form, $edit, $form_state);
           }
           else {
             $edit = NULL;
@@ -1083,15 +1359,16 @@ function _form_builder_handle_input_element($form_id, &$form, &$form_state, $com
         }
       }
       // Mark all posted values for validation.
-      if (isset($form['#value']) || (isset($form['#required']) && $form['#required'])) {
+      if (isset($form['#value']) || !empty($form['#required'])) {
         $form['#needs_validation'] = TRUE;
       }
     }
+
     // Load defaults.
     if (!isset($form['#value'])) {
       // Call #type_value without a second argument to request default_value handling.
       if (function_exists($function)) {
-        $form['#value'] = $function($form);
+        $form['#value'] = $function($form, FALSE, $form_state);
       }
       // Final catch. If we haven't set a value yet, use the explicit default value.
       // Avoid image buttons (which come with garbage value), so we only get value
@@ -1152,6 +1429,10 @@ function _form_builder_handle_input_element($form_id, &$form, &$form_state, $com
  * _form_builder_ie_cleanup().
  */
 function _form_button_was_clicked($form) {
+  // Simple buttons should just rebuild the form
+  if($form['#type'] != 'submit') {
+    return FALSE;
+  }
   // First detect normal 'vanilla' button clicks. Traditionally, all
   // standard buttons on a form share the same name (usually 'op'),
   // and the specific return value is used to determine which was
@@ -1258,13 +1539,30 @@ function form_type_image_button_value($form, $edit = FALSE) {
  *   for this element. Return nothing to use the default.
  */
 function form_type_checkbox_value($form, $edit = FALSE) {
-  if ($edit !== FALSE) {
-    if (empty($form['#disabled'])) {
-      return !empty($edit) ? $form['#return_value'] : 0;
-    }
-    else {
-      return $form['#default_value'];
-    }
+  if ($edit === FALSE) {
+    // Use #default_value as the default value of a checkbox, except change
+    // NULL to 0, because _form_builder_handle_input_element() would otherwise
+    // replace NULL with empty string, but an empty string is a potentially
+    // valid value for a checked checkbox.
+    return isset($form['#default_value']) ? $form['#default_value'] : 0;
+  }
+  else {
+    // Checked checkboxes are submitted with a value (possibly '0' or ''):
+    // http://www.w3.org/TR/html401/interact/forms.html#successful-controls.
+    // For checked checkboxes, browsers submit the string version of
+    // #return_value, but we return the original #return_value. For unchecked
+    // checkboxes, browsers submit nothing at all, but
+    // _form_builder_handle_input_element() detects this, and calls this
+    // function with $input=NULL. Returning NULL from a value callback means to
+    // use the default value, which is not what is wanted when an unchecked
+    // checkbox is submitted, so we use integer 0 as the value indicating an
+    // unchecked checkbox. Therefore, modules must not use integer 0 as a
+    // #return_value, as doing so results in the checkbox always being treated
+    // as unchecked. The string '0' is allowed for #return_value. The most
+    // common use-case for setting #return_value to either 0 or '0' is for the
+    // first option within a 0-indexed array of checkboxes, and for this,
+    // form_process_checkboxes() uses the string rather than the integer.
+    return isset($edit) ? $form['#return_value'] : 0;
   }
 }
 
@@ -1285,12 +1583,65 @@ function form_type_checkboxes_value($form, $edit = FALSE) {
     $value = array();
     $form += array('#default_value' => array());
     foreach ($form['#default_value'] as $key) {
-      $value[$key] = 1;
+      $value[$key] = $key;
     }
     return $value;
   }
-  elseif (!isset($edit)) {
+  elseif (is_array($edit)) {
+    // Programmatic form submissions use NULL to indicate that a checkbox
+    // should be unchecked; see drupal_execute(). We therefore remove all
+    // NULL elements from the array before constructing the return value, to
+    // simulate the behavior of web browsers (which do not send unchecked
+    // checkboxes to the server at all). This will not affect non-programmatic
+    // form submissions, since all values in $_POST are strings.
+    foreach ($edit as $key => $value) {
+      if (!isset($value)) {
+        unset($edit[$key]);
+      }
+    }
+    return drupal_map_assoc($edit);
+  }
+  else {
     return array();
+  }
+}
+
+/**
+ * Form value callback: Determines the value for a #type radios form element.
+ *
+ * @param $element
+ *   The form element whose value is being populated.
+ * @param $input
+ *   (optional) The incoming input to populate the form element. If FALSE, the
+ *   element's default value is returned. Defaults to FALSE.
+ *
+ * @return
+ *   The data that will appear in the $element_state['values'] collection for
+ *   this element.
+ */
+function form_type_radios_value(&$element, $input = FALSE) {
+  if ($input !== FALSE) {
+    // When there's user input (including NULL), return it as the value.
+    // However, if NULL is submitted, _form_builder_handle_input_element() will
+    // apply the default value, and we want that validated against #options
+    // unless it's empty. (An empty #default_value, such as NULL or FALSE, can
+    // be used to indicate that no radio button is selected by default.)
+    if (!isset($input) && !empty($element['#default_value'])) {
+      $element['#needs_validation'] = TRUE;
+    }
+    return $input;
+  }
+  else {
+    // For default value handling, simply return #default_value. Additionally,
+    // for a NULL default value, set #has_garbage_value to prevent
+    // _form_builder_handle_input_element() converting the NULL to an empty
+    // string, so that code can distinguish between nothing selected and the
+    // selection of a radio button whose value is an empty string.
+    $value = isset($element['#default_value']) ? $element['#default_value'] : NULL;
+    if (!isset($value)) {
+      $element['#has_garbage_value'] = TRUE;
+    }
+    return $value;
   }
 }
 
@@ -1312,6 +1663,17 @@ function form_type_password_confirm_value($form, $edit = FALSE) {
     $form += array('#default_value' => array());
     return $form['#default_value'] + array('pass1' => '', 'pass2' => '');
   }
+  $value = array('pass1' => '', 'pass2' => '');
+  // Throw out all invalid array keys; we only allow pass1 and pass2.
+  foreach ($value as $allowed_key => $default) {
+    // These should be strings, but allow other scalars since they might be
+    // valid input in programmatic form submissions. Any nested array values
+    // are ignored.
+    if (isset($edit[$allowed_key]) && is_scalar($edit[$allowed_key])) {
+      $value[$allowed_key] = (string) $edit[$allowed_key];
+    }
+  }
+  return $value;
 }
 
 /**
@@ -1326,10 +1688,40 @@ function form_type_password_confirm_value($form, $edit = FALSE) {
  *   The data that will appear in the $form_state['values'] collection
  *   for this element. Return nothing to use the default.
  */
+/**
+ * Determines the value for a select form element.
+ *
+ * @param $element
+ *   The form element whose value is being populated.
+ * @param $input
+ *   The incoming input to populate the form element. If this is FALSE,
+ *   the element's default value should be returned.
+ *
+ * @return
+ *   The data that will appear in the $element_state['values'] collection
+ *   for this element. Return nothing to use the default.
+ */
 function form_type_select_value($form, $edit = FALSE) {
   if ($edit !== FALSE) {
     if (isset($form['#multiple']) && $form['#multiple']) {
-      return (is_array($edit)) ? drupal_map_assoc($edit) : array();
+      // If an enabled multi-select submits NULL, it means all items are
+      // unselected. A disabled multi-select always submits NULL, and the
+      // default value should be used.
+      if (empty($form['#disabled'])) {
+        return (is_array($edit)) ? drupal_map_assoc($edit) : array();
+      }
+      else {
+        return (isset($form['#default_value']) && is_array($form['#default_value'])) ? $form['#default_value'] : array();
+      }
+    }
+    // Non-multiple select elements may have an empty option preprended to them
+    // (see form_process_select()). When this occurs, usually #empty_value is
+    // an empty string, but some forms set #empty_value to integer 0 or some
+    // other non-string constant. PHP receives all submitted form input as
+    // strings, but if the empty option is selected, set the value to match the
+    // empty value exactly.
+    elseif (isset($form['#empty_value']) && $edit === (string) $form['#empty_value']) {
+      return $form['#empty_value'];
     }
     else {
       return $edit;
@@ -1350,10 +1742,34 @@ function form_type_select_value($form, $edit = FALSE) {
  *   for this element. Return nothing to use the default.
  */
 function form_type_textfield_value($form, $edit = FALSE) {
-  if ($edit !== FALSE) {
-    // Equate $edit to the form value to ensure it's marked for
-    // validation.
-    return str_replace(array("\r", "\n"), '', $edit);
+  if ($edit !== FALSE && $edit !== NULL) {
+    // This should be a string, but allow other scalars since they might be
+    // valid input in programmatic form submissions.
+    if (!is_scalar($edit)) {
+      $edit = '';
+    }
+    return str_replace(array("\r", "\n"), '', (string) $edit);
+  }
+}
+
+/**
+ * Determines the value for a textarea form element. Backport from D7.
+ *
+ * @param array $element
+ *   The form element whose value is being populated.
+ * @param mixed $input
+ *   The incoming input to populate the form element. If this is FALSE,
+ *   the element's default value should be returned.
+ *
+ * @return string
+ *   The data that will appear in the $element_state['values'] collection
+ *   for this element. Return nothing to use the default.
+ */
+function form_type_textarea_value($element, $input = FALSE) {
+  if ($input !== FALSE) {
+    // This should be a string, but allow other scalars since they might be
+    // valid input in programmatic form submissions.
+    return is_scalar($input) ? (string) $input : '';
   }
 }
 
@@ -1476,6 +1892,72 @@ function form_options_flatten($array, $reset = TRUE) {
 }
 
 /**
+ * Processes a select list form element. Backport from D7.
+ *
+ * This process callback is mandatory for select fields, since all user agents
+ * automatically preselect the first available option of single (non-multiple)
+ * select lists.
+ *
+ * @param $element
+ *   The form element to process. Properties used:
+ *   - #multiple: (optional) Indicates whether one or more options can be
+ *     selected. Defaults to FALSE.
+ *   - #default_value: Must be NULL or not set in case there is no value for the
+ *     element yet, in which case a first default option is inserted by default.
+ *     Whether this first option is a valid option depends on whether the field
+ *     is #required or not.
+ *   - #required: (optional) Whether the user needs to select an option (TRUE)
+ *     or not (FALSE). Defaults to FALSE.
+ *   - #empty_option: (optional) The label to show for the first default option.
+ *     By default, the label is automatically set to "- Select -" for a required
+ *     field and "- None -" for an optional field.
+ *   - #empty_value: (optional) The value for the first default option, which is
+ *     used to determine whether the user submitted a value or not.
+ *     - If #required is TRUE, this defaults to '' (an empty string).
+ *     - If #required is not TRUE and this value isn't set, then no extra option
+ *       is added to the select control, leaving the control in a slightly
+ *       illogical state, because there's no way for the user to select nothing,
+ *       since all user agents automatically preselect the first available
+ *       option. But people are used to this being the behavior of select
+ *       controls.
+ *       @todo Address the above issue in Drupal 8.
+ *     - If #required is not TRUE and this value is set (most commonly to an
+ *       empty string), then an extra option (see #empty_option above)
+ *       representing a "non-selection" is added with this as its value.
+ *
+ * @see _form_validate()
+ */
+function form_process_select($element) {
+  // #multiple select fields need a special #name.
+  if ($element['#multiple']) {
+    $element['#attributes']['multiple'] = 'multiple';
+    $element['#attributes']['name'] = $element['#name'] . '[]';
+  }
+  // A non-#multiple select needs special handling to prevent user agents from
+  // preselecting the first option without intention. #multiple select lists do
+  // not get an empty option, as it would not make sense, user interface-wise.
+  else {
+    $required = $element['#required'];
+    // If the element is required and there is no #default_value, then add an
+    // empty option that will fail validation, so that the user is required to
+    // make a choice. Also, if there's a value for #empty_value or
+    // #empty_option, then add an option that represents emptiness.
+    if (($required && !isset($element['#default_value'])) || isset($element['#empty_value']) || isset($element['#empty_option'])) {
+      $element += array(
+        '#empty_value' => '',
+        '#empty_option' => $required ? t('- Select -') : t('- None -'),
+      );
+      // The empty option is prepended to #options and purposively not merged
+      // to prevent another option in #options mistakenly using the same value
+      // as #empty_value.
+      $empty_option = array($element['#empty_value'] => $element['#empty_option']);
+      $element['#options'] = $empty_option + $element['#options'];
+    }
+  }
+  return $element;
+}
+
+/**
  * Format a dropdown menu or scrolling selection box.
  *
  * @param $element
@@ -1494,17 +1976,52 @@ function theme_select($element) {
   $select = '';
   $size = $element['#size'] ? ' size="'. $element['#size'] .'"' : '';
   _form_set_class($element, array('form-select'));
-  $multiple = $element['#multiple'];
-
-  if(isset($element['#name']) && !empty($multiple)) {
-    $element['#name'] .= '[]';
-  }
   
   element_set_attributes($element, array('name', 'id'));
 
-  return theme('form_element', $element, '<select'. ($multiple ? ' multiple="multiple" ' : '') . drupal_attributes($element['#attributes']) . $size . '>'. form_select_options($element) .'</select>');
+  return theme('form_element', $element, '<select'. drupal_attributes($element['#attributes']) . $size . '>'. form_select_options($element) .'</select>');
 }
 
+/**
+ * Converts an array of options into HTML, for use in select list form elements.
+ * Backport from D7.
+ *
+ * This function calls itself recursively to obtain the values for each optgroup
+ * within the list of options and when the function encounters an object with
+ * an 'options' property inside $element['#options'].
+ *
+ * @param array $element
+ *   An associative array containing the following key-value pairs:
+ *   - #multiple: Optional Boolean indicating if the user may select more than
+ *     one item.
+ *   - #options: An associative array of options to render as HTML. Each array
+ *     value can be a string, an array, or an object with an 'option' property:
+ *     - A string or integer key whose value is a translated string is
+ *       interpreted as a single HTML option element. Do not use placeholders
+ *       that sanitize data: doing so will lead to double-escaping. Note that
+ *       the key will be visible in the HTML and could be modified by malicious
+ *       users, so don't put sensitive information in it.
+ *     - A translated string key whose value is an array indicates a group of
+ *       options. The translated string is used as the label attribute for the
+ *       optgroup. Do not use placeholders to sanitize data: doing so will lead
+ *       to double-escaping. The array should contain the options you wish to
+ *       group and should follow the syntax of $element['#options'].
+ *     - If the function encounters a string or integer key whose value is an
+ *       object with an 'option' property, the key is ignored, the contents of
+ *       the option property are interpreted as $element['#options'], and the
+ *       resulting HTML is added to the output.
+ *   - #value: Optional integer, string, or array representing which option(s)
+ *     to pre-select when the list is first displayed. The integer or string
+ *     must match the key of an option in the '#options' list. If '#multiple' is
+ *     TRUE, this can be an array of integers or strings.
+ * @param array|null $choices
+ *   (optional) Either an associative array of options in the same format as
+ *   $element['#options'] above, or NULL. This parameter is only used internally
+ *   and is not intended to be passed in to the initial function call.
+ *
+ * @return string
+ *   An HTML string of options and optgroups for use in a select form element.
+ */
 function form_select_options($element, $choices = NULL) {
   if (!isset($choices)) {
     $choices = $element['#options'];
@@ -1512,11 +2029,11 @@ function form_select_options($element, $choices = NULL) {
   // array_key_exists() accommodates the rare event where $element['#value'] is NULL.
   // isset() fails in this situation.
   $value_valid = isset($element['#value']) || array_key_exists('#value', $element);
-  $value_is_array = isset($element['#value']) && is_array($element['#value']);
+  $value_is_array = $value_valid && is_array($element['#value']);
   $options = '';
   foreach ($choices as $key => $choice) {
     if (is_array($choice)) {
-      $options .= '<optgroup label="'. check_plain($key) .'">';
+      $options .= '<optgroup label="' . check_plain($key) . '">';
       $options .= form_select_options($element, $choice);
       $options .= '</optgroup>';
     }
@@ -1524,14 +2041,14 @@ function form_select_options($element, $choices = NULL) {
       $options .= form_select_options($element, $choice->option);
     }
     else {
-      $key = (string)$key;
-      if ($value_valid && (!$value_is_array && (string)$element['#value'] === $key || ($value_is_array && in_array($key, $element['#value'])))) {
+      $key = (string) $key;
+      if ($value_valid && (!$value_is_array && (string) $element['#value'] === $key || ($value_is_array && in_array($key, $element['#value'])))) {
         $selected = ' selected="selected"';
       }
       else {
         $selected = '';
       }
-      $options .= '<option value="'. check_plain($key) .'"'. $selected .'>'. check_plain($choice) .'</option>';
+      $options .= '<option value="' . check_plain($key) . '"' . $selected . '>' . check_plain($choice) . '</option>';
     }
   }
   return $options;
@@ -1629,11 +2146,13 @@ function theme_fieldset($element) {
 function theme_radio($element) {
   _form_set_class($element, array('form-radio'));
   $output = '<input type="radio" ';
-  if(!empty($element['#return_value'])) {
-    $output .= 'value="'. $element['#return_value'] .'" ';
-    $output .= (check_plain($element['#value']) == $element['#return_value']) ? ' checked="checked" ' : ' ';
+
+  element_set_attributes($element, array('id', 'name', '#return_value' => 'value'));
+
+  if (isset($element['#return_value']) && $element['#value'] !== FALSE && $element['#value'] == $element['#return_value']) {
+    $element['#attributes']['checked'] = 'checked';
   }
-  element_set_attributes($element, array('id', 'name'));
+
   $output .= drupal_attributes($element['#attributes']) .' />';
   if (!is_null($element['#title'])) {
     $output = '<label class="option"' . (!empty($element['#id'])? ' for="'. $element['#id'] .'"': '') . '>'. $output .' '. $element['#title'] .'</label>';
@@ -1829,33 +2348,6 @@ function weight_value(&$form) {
 }
 
 /**
- * Roll out a single radios element to a list of radios,
- * using the options array as index.
- */
-function expand_radios($element) {
-  if (count($element['#options']) > 0) {
-    foreach ($element['#options'] as $key => $choice) {
-      if (!isset($element[$key])) {
-        // Generate the parents as the autogenerator does, so we will have a
-        // unique id for each radio button.
-        $parents_for_id = array_merge($element['#parents'], array($key));
-        $element[$key] = array(
-          '#type' => 'radio',
-          '#title' => $choice,
-          '#return_value' => check_plain($key),
-          '#default_value' => isset($element['#default_value']) ? $element['#default_value'] : NULL,
-          '#attributes' => $element['#attributes'],
-          '#parents' => $element['#parents'],
-          '#id' => form_clean_id('edit-'. implode('-', $parents_for_id)),
-          '#ahah' => isset($element['#ahah']) ? $element['#ahah'] : NULL,
-        );
-      }
-    }
-  }
-  return $element;
-}
-
-/**
  * Add AHAH information about a form element to the page to communicate with
  * javascript. If #ahah[path] is set on an element, this additional javascript is
  * added to the page header to attach the AHAH behaviors. See ahah.js for more
@@ -1919,7 +2411,7 @@ function form_expand_ahah($element) {
     );
 
     // If page caching is active, indicate that this form is immutable.
-    if (variable_get('cache', CACHE_DISABLED) != CACHE_DISABLED && !$user->uid && $_SERVER['REQUEST_METHOD'] == 'GET' && page_get_cache(TRUE)) {
+    if (variable_get('cache', CACHE_DISABLED) != CACHE_DISABLED && !$user->uid && $_SERVER['REQUEST_METHOD'] == 'GET' && drupal_page_get_cache(TRUE)) {
       $ahah_binding['immutable'] = TRUE;
     }
 
@@ -1961,6 +2453,42 @@ function theme_item($element) {
 }
 
 /**
+ * Expands a radios element into individual radio elements.
+ */
+function form_process_radios($element) {
+  if (count($element['#options']) > 0) {
+    $weight = 0;
+    foreach ($element['#options'] as $key => $choice) {
+      // Maintain order of options as defined in #options, in case the element
+      // defines custom option sub-elements, but does not define all option
+      // sub-elements.
+      $weight += 0.001;
+
+      $element += array($key => array());
+      // Generate the parents as the autogenerator does, so we will have a
+      // unique id for each radio button.
+      $parents_for_id = array_merge($element['#parents'], array($key));
+      $element[$key] += array(
+        '#type' => 'radio',
+        '#title' => $choice,
+        // The key is sanitized in drupal_attributes() during output from the
+        // theme function.
+        '#return_value' => $key,
+        // Use default or FALSE. A value of FALSE means that the radio button is
+        // not 'checked'.
+        '#default_value' => isset($element['#default_value']) ? $element['#default_value'] : FALSE,
+        '#attributes' => $element['#attributes'],
+        '#parents' => $element['#parents'],
+        '#id' => form_clean_id('edit-' . implode('-', $parents_for_id)),
+        '#ahah' => isset($element['#ahah']) ? $element['#ahah'] : NULL,
+        '#weight' => $weight,
+      );
+    }
+  }
+  return $element;
+}
+
+/**
  * Format a checkbox.
  *
  * @param $element
@@ -1975,11 +2503,10 @@ function theme_checkbox($element) {
   _form_set_class($element, array('form-checkbox'));
   $checkbox = '<input';
   $checkbox .= ' type="checkbox"';
-  element_set_attributes($element, array('name', 'id', 'value'));
+  element_set_attributes($element, array('name', 'id', '#return_value' => 'value'));
 
-  if(!empty($element['#return_value'])) {
-    $checkbox .= ' value="'. $element['#return_value'] .'"';
-    $checkbox .= !empty($element['#value']) ? ' checked="checked"' : '';
+  if (!empty($element['#checked'])) {
+    $element['#attributes']['checked'] = 'checked';
   }
   $checkbox .= drupal_attributes($element['#attributes']) .' />';
 
@@ -2016,25 +2543,67 @@ function theme_checkboxes($element) {
   }
 }
 
-function expand_checkboxes($element) {
+/**
+ * Sets the #checked property of a checkbox element.
+ */
+function form_process_checkbox($element, $form_state) {
+  $value = $element['#value'];
+  $return_value = $element['#return_value'];
+  // On form submission, the #value of an available and enabled checked
+  // checkbox is #return_value, and the #value of an available and enabled
+  // unchecked checkbox is integer 0. On not submitted forms, and for
+  // checkboxes with #access=FALSE or #disabled=TRUE, the #value is
+  // #default_value (integer 0 if #default_value is NULL). Most of the time,
+  // a string comparison of #value and #return_value is sufficient for
+  // determining the "checked" state, but a value of TRUE always means checked
+  // (even if #return_value is 'foo'), and a value of FALSE or integer 0 always
+  // means unchecked (even if #return_value is '' or '0').
+  if ($value === TRUE || $value === FALSE || $value === 0) {
+    $element['#checked'] = (bool) $value;
+  }
+  else {
+    // Compare as strings, so that 15 is not considered equal to '15foo', but 1
+    // is considered equal to '1'. This cast does not imply that either #value
+    // or #return_value is expected to be a string.
+    $element['#checked'] = ((string) $value === (string) $return_value);
+  }
+  return $element;
+}
+
+/**
+ * Processes a checkboxes form element.
+ */
+function form_process_checkboxes($element) {
   $value = is_array($element['#value']) ? $element['#value'] : array();
   $element['#tree'] = TRUE;
   if (count($element['#options']) > 0) {
     if (!isset($element['#default_value']) || $element['#default_value'] == 0) {
       $element['#default_value'] = array();
     }
+    $weight = 0;
     foreach ($element['#options'] as $key => $choice) {
-      if (!isset($element[$key])) {
-        $element[$key] = array(
-          '#type' => 'checkbox',
-          '#processed' => TRUE,
-          '#title' => $choice,
-          '#return_value' => $key,
-          '#default_value' => isset($value[$key]),
-          '#attributes' => $element['#attributes'],
-          '#ahah' => isset($element['#ahah']) ? $element['#ahah'] : NULL,
-        );
+      // Integer 0 is not a valid #return_value, so use '0' instead.
+      // @see form_type_checkbox_value().
+      // @todo For Drupal 8, cast all integer keys to strings for consistency
+      //   with form_process_radios().
+      if ($key === 0) {
+        $key = '0';
       }
+      // Maintain order of options as defined in #options, in case the element
+      // defines custom option sub-elements, but does not define all option
+      // sub-elements.
+      $weight += 0.001;
+
+      $element += array($key => array());
+      $element[$key] += array(
+        '#type' => 'checkbox',
+        '#title' => $choice,
+        '#return_value' => $key,
+        '#default_value' => isset($value[$key]) ? $key : NULL,
+        '#attributes' => $element['#attributes'],
+        '#ahah' => isset($element['#ahah']) ? $element['#ahah'] : NULL,
+        '#weight' => $weight,
+      );
     }
   }
   return $element;
@@ -2394,12 +2963,8 @@ function _form_set_class(&$element, $class = array()) {
  *   The cleaned ID.
  */
 function form_clean_id($id = NULL, $flush = FALSE) {
-  static $seen_ids = array();
+  $seen_ids = &drupal_static(__FUNCTION__, array());
 
-  if ($flush) {
-    $seen_ids = array();
-    return;
-  }
   $id = str_replace(array('][', '_', ' '), '-', $id);
 
   // Ensure IDs are unique. The first occurrence is held but left alone.

@@ -369,6 +369,7 @@ function simpletest_script_execute_batch() {
  * Run a single test (assume a Drupal bootstrapped environment).
  */
 function simpletest_script_run_one_test($test_id, $test_class) {
+  error_reporting(E_ALL & ~E_DEPRECATED);
   global $current_test_class, $current_test_method, $test_run_success;
   $current_test_class = $test_class;
 

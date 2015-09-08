@@ -135,14 +135,14 @@ function system_elements() {
   $type['button'] = array('#input' => TRUE, '#name' => 'op', '#button_type' => 'submit', '#executes_submit_callback' => FALSE, '#process' => array('form_expand_ahah'));
   $type['image_button'] = array('#input' => TRUE, '#button_type' => 'submit', '#executes_submit_callback' => TRUE, '#process' => array('form_expand_ahah'), '#return_value' => TRUE, '#has_garbage_value' => TRUE, '#src' => NULL);
   $type['textfield'] = array('#input' => TRUE, '#size' => 60, '#maxlength' => 128, '#autocomplete_path' => FALSE, '#process' => array('form_process_autocomplete', 'form_expand_ahah'));
-  $type['password'] = array('#input' => TRUE, '#size' => 60, '#maxlength' => 128, '#process' => array('form_expand_ahah'));
+  $type['password'] = array('#input' => TRUE, '#size' => 60, '#maxlength' => 128, '#process' => array('form_expand_ahah'), '#value_callback' => 'form_type_textfield_value');
   $type['password_confirm'] = array('#input' => TRUE, '#process' => array('expand_password_confirm'));
   $type['textarea'] = array('#input' => TRUE, '#cols' => 60, '#rows' => 5, '#resizable' => TRUE, '#process' => array('form_expand_ahah'));
-  $type['radios'] = array('#input' => TRUE, '#process' => array('expand_radios'));
+  $type['radios'] = array('#input' => TRUE, '#process' => array('form_process_radios'));
   $type['radio'] = array('#input' => TRUE, '#default_value' => NULL, '#process' => array('form_expand_ahah'));
-  $type['checkboxes'] = array('#input' => TRUE, '#process' => array('expand_checkboxes'), '#tree' => TRUE);
-  $type['checkbox'] = array('#input' => TRUE, '#return_value' => 1, '#process' => array('form_expand_ahah'));
-  $type['select'] = array('#input' => TRUE, '#size' => 0, '#multiple' => FALSE, '#process' => array('form_expand_ahah'));
+  $type['checkboxes'] = array('#input' => TRUE, '#process' => array('form_process_checkboxes'), '#tree' => TRUE);
+  $type['checkbox'] = array('#input' => TRUE, '#return_value' => 1, '#process' => array('form_process_checkbox', 'form_expand_ahah'));
+  $type['select'] = array('#input' => TRUE, '#size' => 0, '#multiple' => FALSE, '#process' => array('form_process_select', 'form_expand_ahah'));
   $type['weight'] = array('#input' => TRUE, '#delta' => 10, '#default_value' => 0, '#process' => array('process_weight', 'form_expand_ahah'));
   $type['date'] = array('#input' => TRUE, '#process' => array('expand_date'), '#element_validate' => array('date_validate'));
   $type['file'] = array('#input' => TRUE, '#size' => 60);
@@ -634,6 +634,30 @@ function system_init() {
   drupal_add_css(drupal_get_path('module', 'system') .'/defaults.css', array('group' => CSS_SYSTEM, 'every_page' => TRUE));
   drupal_add_css(drupal_get_path('module', 'system') .'/system.css', array('group' => CSS_SYSTEM, 'every_page' => TRUE));
   drupal_add_css(drupal_get_path('module', 'system') .'/system-menus.css', array('group' => CSS_SYSTEM, 'every_page' => TRUE));
+
+  // Add CSS/JS files from module .info files.
+  system_add_module_assets();
+}
+
+/**
+ * Adds CSS and JavaScript files declared in module .info files.
+ * Backport from D7.
+ */
+function system_add_module_assets() {
+  foreach (system_get_info('module') as $module => $info) {
+    if (!empty($info['stylesheets'])) {
+      foreach ($info['stylesheets'] as $media => $stylesheets) {
+        foreach ($stylesheets as $stylesheet) {
+          drupal_add_css($stylesheet, array('every_page' => TRUE, 'media' => $media));
+        }
+      }
+    }
+    if (!empty($info['scripts'])) {
+      foreach ($info['scripts'] as $script) {
+        drupal_add_js($script, array('every_page' => TRUE));
+      }
+    }
+  }
 }
 
 /**
@@ -927,6 +951,46 @@ function system_update_files_database(&$files, $type) {
   // system_list() cache or we will continue to load the old copy, look for
   // schema updates in the wrong place, etc.
   system_list_reset();
+}
+
+/**
+ * Returns an array of information about enabled modules or themes.
+ * Backport from D7.
+ *
+ * This function returns the information from the {system} table corresponding
+ * to the cached contents of the .info file for each active module or theme.
+ *
+ * @param $type
+ *   Either 'module' or 'theme'.
+ * @param $name
+ *   (optional) The name of a module or theme whose information shall be
+ *   returned. If omitted, all records for the provided $type will be returned.
+ *   If $name does not exist in the provided $type or is not enabled, an empty
+ *   array will be returned.
+ *
+ * @return
+ *   An associative array of module or theme information keyed by name, or only
+ *   information for $name, if given. If no records are available, an empty
+ *   array is returned.
+ *
+ * @see system_rebuild_module_data()
+ * @see system_rebuild_theme_data()
+ */
+function system_get_info($type, $name = NULL) {
+  $info = array();
+  if ($type == 'module') {
+    $type = 'module_enabled';
+  }
+  $list = system_list($type);
+  foreach ($list as $shortname => $item) {
+    if (!empty($item->status)) {
+      $info[$shortname] = $item->info;
+    }
+  }
+  if (isset($name)) {
+    return isset($info[$name]) ? $info[$name] : array();
+  }
+  return $info;
 }
 
 /**

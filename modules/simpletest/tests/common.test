@@ -706,7 +706,6 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
    */
   function testModuleInfo() {
     $this->drupalGet('');
-
     // Verify common_test.css in a STYLE media="all" tag.
     $elements = $this->xpath('//style[@media=:media and contains(text(), :filename)]', array(
       ':media' => 'all',
@@ -1649,14 +1648,14 @@ class JavaScriptTestCase extends DrupalWebTestCase {
     $this->resetStaticVariables();
     variable_set('javascript_always_use_jquery', FALSE);
     drupal_add_js('misc/collapse.js', array('requires_jquery' => FALSE));
-    drupal_add_js('misc/ajax.js');
+    drupal_add_js('misc/ahah.js');
     $javascript = drupal_get_js();
     $this->assertTrue(strpos($javascript, 'misc/jquery.js') !== FALSE, 'When "javascript_always_use_jquery" is FALSE: The JavaScript returned by drupal_get_js() when at least one custom JavaScript file that requires jQuery has been added includes jquery.js.');
     $this->assertTrue(strpos($javascript, 'misc/drupal.js') !== FALSE, 'When "javascript_always_use_jquery" is FALSE: The JavaScript returned by drupal_get_js() when at least one custom JavaScript file that requires jQuery has been added includes drupal.js.');
     $this->assertTrue(strpos($javascript, 'Drupal.settings') !== FALSE, 'When "javascript_always_use_jquery" is FALSE: The JavaScript returned by drupal_get_js() when at least one custom JavaScript file that requires jQuery has been added includes Drupal.settings.');
     $this->assertTrue(strpos($javascript, 'basePath') !== FALSE, 'When "javascript_always_use_jquery" is FALSE: The JavaScript returned by drupal_get_js() when at least one custom JavaScript file that requires jQuery has been added includes the basePath Drupal setting.');
     $this->assertTrue(strpos($javascript, 'misc/collapse.js') !== FALSE, 'When "javascript_always_use_jquery" is FALSE: The JavaScript returned by drupal_get_js() when at least one custom JavaScript file that requires jQuery has been added includes the first custom file.');
-    $this->assertTrue(strpos($javascript, 'misc/ajax.js') !== FALSE, 'When "javascript_always_use_jquery" is FALSE: The JavaScript returned by drupal_get_js() when at least one custom JavaScript file that requires jQuery has been added includes the second custom file.');
+    $this->assertTrue(strpos($javascript, 'misc/ahah.js') !== FALSE, 'When "javascript_always_use_jquery" is FALSE: The JavaScript returned by drupal_get_js() when at least one custom JavaScript file that requires jQuery has been added includes the second custom file.');
     variable_del('javascript_always_use_jquery');
   }
 
@@ -1693,12 +1692,12 @@ class JavaScriptTestCase extends DrupalWebTestCase {
     drupal_static_reset('drupal_add_js');
 
     // Add two JavaScript files to the current request and build the cache.
-    drupal_add_js('misc/ajax.js');
+    drupal_add_js('misc/ahah.js');
     drupal_add_js('misc/autocomplete.js');
 
     $js_items = drupal_add_js();
     drupal_build_js_cache(array(
-      'misc/ajax.js' => $js_items['misc/ajax.js'],
+      'misc/ahah.js' => $js_items['misc/ahah.js'],
       'misc/autocomplete.js' => $js_items['misc/autocomplete.js']
     ));
 
@@ -1710,13 +1709,13 @@ class JavaScriptTestCase extends DrupalWebTestCase {
     variable_del('drupal_js_cache_files');
     drupal_static_reset('drupal_add_js');
     drupal_add_js('some/custom/javascript_file.js', array('scope' => 'footer'));
-    drupal_add_js('misc/ajax.js');
+    drupal_add_js('misc/ahah.js');
     drupal_add_js('misc/autocomplete.js');
 
     // Rebuild the cache.
     $js_items = drupal_add_js();
     drupal_build_js_cache(array(
-      'misc/ajax.js' => $js_items['misc/ajax.js'],
+      'misc/ahah.js' => $js_items['misc/ahah.js'],
       'misc/autocomplete.js' => $js_items['misc/autocomplete.js']
     ));
 

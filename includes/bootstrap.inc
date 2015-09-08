@@ -1664,7 +1664,7 @@ function _drupal_bootstrap($phase) {
       if ($cache_enabled) {
         // If there is a cached page, display it.
         if ($cache) {
-          // backport compatibility
+          // D7 compatibility
           header('X-Drupal-Cache: HIT');
 
           drupal_serve_page_from_cache($cache);
@@ -1675,7 +1675,7 @@ function _drupal_bootstrap($phase) {
           // We are done.
           exit;
         } else {
-          // backport compatibility
+          // D7 compatibility
           header('X-Drupal-Cache: MISS');
         }
       }

@@ -218,7 +218,6 @@ abstract class DrupalTestCase {
       // We remove that call.
       array_shift($backtrace);
     }
-
     return _drupal_get_last_caller($backtrace);
   }
 
@@ -291,7 +290,7 @@ abstract class DrupalTestCase {
       $message = t("Expected @first to match second array", array('@first' => var_export($first, TRUE)));
 
       if(!is_array($second)) {
-        return $message . t(' and second parameter is not an array: @value', array('@value' => var_dump($second, TRUE)));
+        return $message . t(' and second parameter is not an array: @value', array('@value' => var_export($second, TRUE)));
       }
 
       $message .= "\n\n";
@@ -475,7 +474,7 @@ abstract class DrupalTestCase {
       if (strtolower(substr($method, 0, 4)) == 'test' && 
              ($run_method === NULL || $method == $run_method) ) {
         $current_test_method = $method;
-      
+
         $this->setUp();
         try {
           $this->$method();
@@ -684,6 +683,13 @@ class DrupalWebTestCase extends DrupalTestCase {
    * @var string
    */
   protected $plainTextContent;
+
+  /**
+   * The value of the Drupal.settings JavaScript variable for the page currently loaded in the internal browser.
+   *
+   * @var Array
+   */
+  protected $drupalSettings;
 
   /**
    * The parsed version of the page.
@@ -1409,11 +1415,10 @@ class DrupalWebTestCase extends DrupalTestCase {
       $curl_options = $this->additionalCurlOptions + array(
         CURLOPT_COOKIEJAR => $this->cookieFile,
         CURLOPT_URL => $base_url,
-        CURLOPT_FOLLOWLOCATION => TRUE,
-        CURLOPT_MAXREDIRS => 5,
+        CURLOPT_FOLLOWLOCATION => FALSE,
         CURLOPT_RETURNTRANSFER => TRUE,
-        CURLOPT_SSL_VERIFYPEER => FALSE, // Required to make the tests run on https.
-        CURLOPT_SSL_VERIFYHOST => FALSE, // Required to make the tests run on https.
+        CURLOPT_SSL_VERIFYPEER => FALSE, // Required to make the tests run on HTTPS.
+        CURLOPT_SSL_VERIFYHOST => FALSE, // Required to make the tests run on HTTPS.
         CURLOPT_HEADERFUNCTION => array(&$this, 'curlHeaderCallback'),
       );
       if (isset($this->httpauth_credentials)) {
@@ -1432,16 +1437,46 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
-   * Performs a cURL exec with the specified options after calling curlConnect().
+   * Initializes and executes a cURL request.
    *
    * @param $curl_options
-   *   Custom cURL options.
+   *   An associative array of cURL options to set, where the keys are constants
+   *   defined by the cURL library. For a list of valid options, see
+   *   http://www.php.net/manual/function.curl-setopt.php
+   * @param $redirect
+   *   FALSE if this is an initial request, TRUE if this request is the result
+   *   of a redirect.
+   *
    * @return
-   *   Content returned from the exec.
+   *   The content returned from the call to curl_exec().
+   *
+   * @see curlInitialize()
    */
-  protected function curlExec($curl_options) {
+  protected function curlExec($curl_options, $redirect = FALSE) {
     $this->curlInitialize();
+
+    if (!empty($curl_options[CURLOPT_URL])) {
+      // Forward XDebug activation if present.
+      if (isset($_COOKIE['XDEBUG_SESSION'])) {
+        $options = drupal_parse_url($curl_options[CURLOPT_URL]);
+        $options += array('query' => array());
+        $options['query'] += array('XDEBUG_SESSION_START' => $_COOKIE['XDEBUG_SESSION']);
+        $curl_options[CURLOPT_URL] = url($options['path'], $options);
+      }
+
+      // cURL incorrectly handles URLs with a fragment by including the
+      // fragment in the request to the server, causing some web servers
+      // to reject the request citing "400 - Bad Request". To prevent
+      // this, we strip the fragment from the request.
+      // TODO: Remove this for Drupal 8, since fixed in curl 7.20.0.
+      if (strpos($curl_options[CURLOPT_URL], '#')) {
+        $original_url = $curl_options[CURLOPT_URL];
+        $curl_options[CURLOPT_URL] = strtok($curl_options[CURLOPT_URL], '#');
+      }
+    }
+
     $url = empty($curl_options[CURLOPT_URL]) ? curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL) : $curl_options[CURLOPT_URL];
+
     if (!empty($curl_options[CURLOPT_POST])) {
       // This is a fix for the Curl library to prevent Expect: 100-continue
       // headers in POST requests, that may cause unexpected HTTP response
@@ -1452,19 +1487,45 @@ class DrupalWebTestCase extends DrupalTestCase {
     }
     curl_setopt_array($this->curlHandle, $this->additionalCurlOptions + $curl_options);
 
-    // Reset headers and the session ID.
-    $this->session_id = NULL;
-    $this->headers = array();
+    if (!$redirect) {
+      // Reset headers, the session ID and the redirect counter.
+      $this->session_id = NULL;
+      $this->headers = array();
+      $this->redirect_count = 0;
+    }
 
-    $this->drupalSetContent(curl_exec($this->curlHandle), curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL));
+    $content = curl_exec($this->curlHandle);
+    $status = curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE);
+
+    // cURL incorrectly handles URLs with fragments, so instead of
+    // letting cURL handle redirects we take of them ourselves to
+    // to prevent fragments being sent to the web server as part
+    // of the request.
+    // TODO: Remove this for Drupal 8, since fixed in curl 7.20.0.
+    if (in_array($status, array(300, 301, 302, 303, 305, 307)) && $this->redirect_count < variable_get('simpletest_maximum_redirects', 5)) {
+      $location = $this->drupalGetHeader('location');
+      $this->verbose( !empty($curl_options[CURLOPT_NOBODY]) ? 'HEAD' : (empty($curl_options[CURLOPT_POSTFIELDS]) ? 'GET' : 'POST') . ' request to: ' . $curl_options[CURLOPT_URL] .
+                         (empty($curl_options[CURLOPT_POSTFIELDS])? '': '<hr />POST fields: ' . $curl_options[CURLOPT_POSTFIELDS]) . 
+                         '<hr />Redirect to: ' . $location . "\n" . 
+                         '<hr />' . $content);
+      if ($location) {
+        $this->redirect_count++;
+        $curl_options = array();
+        $curl_options[CURLOPT_URL] = $location;
+        $curl_options[CURLOPT_HTTPGET] = TRUE;
+        return $this->curlExec($curl_options, TRUE);
+      }
+    }
+
+    $this->drupalSetContent($content, isset($original_url) ? $original_url : curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL));
     $message_vars = array(
       '!method' => !empty($curl_options[CURLOPT_NOBODY]) ? 'HEAD' : (empty($curl_options[CURLOPT_POSTFIELDS]) ? 'GET' : 'POST'),
-      '@url' => $url,
-      '@status' => curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE),
-      '!length' => format_size(strlen($this->content))
+      '@url' => isset($original_url) ? $original_url : $url,
+      '@status' => $status,
+      '!length' => format_size(strlen($this->drupalGetContent()))
     );
     $message = t('!method @url returned @status (!length).', $message_vars);
-    $this->assertTrue($this->content !== FALSE, $message, t('Browser'));
+    $this->assertTrue($this->drupalGetContent() !== FALSE, $message, t('Browser'));
     return $this->drupalGetContent();
   }
 
@@ -1571,6 +1632,13 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
+   * Retrieve a Drupal path or an absolute path and JSON decode the result.
+   */
+  protected function drupalGetAJAX($path, array $options = array(), array $headers = array()) {
+    return drupal_json_decode($this->drupalGet($path, $options, $headers));
+  }
+
+  /**
    * Execute a POST request on a Drupal page.
    * It will be done as usual POST request with SimpleBrowser.
    *
@@ -1579,6 +1647,7 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   NULL to post to the current page. For multi-stage forms you can set the
    *   path to NULL and have it post to the last received page. Example:
    *
+   *   @code
    *   // First step in form.
    *   $edit = array(...);
    *   $this->drupalPost('some_url', $edit, t('Save'));
@@ -1586,6 +1655,7 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   // Second step in form.
    *   $edit = array(...);
    *   $this->drupalPost(NULL, $edit, t('Save'));
+   *   @endcode
    * @param  $edit
    *   Field data in an associative array. Changes the current input fields
    *   (where possible) to the values indicated. A checkbox can be set to
@@ -1595,46 +1665,102 @@ class DrupalWebTestCase extends DrupalTestCase {
    *
    *   Multiple select fields can be set using name[] and setting each of the
    *   possible values. Example:
+   *   @code
    *   $edit = array();
    *   $edit['name[]'] = array('value1', 'value2');
+   *   @endcode
    * @param $submit
-   *   Value of the submit button.
+   *   Value of the submit button whose click is to be emulated. For example,
+   *   t('Save'). The processing of the request depends on this value. For
+   *   example, a form may have one button with the value t('Save') and another
+   *   button with the value t('Delete'), and execute different code depending
+   *   on which one is clicked.
+   *
+   *   This function can also be called to emulate an Ajax submission. In this
+   *   case, this value needs to be an array with the following keys:
+   *   - path: A path to submit the form values to for Ajax-specific processing,
+   *     which is likely different than the $path parameter used for retrieving
+   *     the initial form. Defaults to 'system/ajax'.
+   *   - triggering_element: If the value for the 'path' key is 'system/ajax' or
+   *     another generic Ajax processing path, this needs to be set to the name
+   *     of the element. If the name doesn't identify the element uniquely, then
+   *     this should instead be an array with a single key/value pair,
+   *     corresponding to the element name and value. The callback for the
+   *     generic Ajax processing path uses this to find the #ajax information
+   *     for the element, including which specific callback to use for
+   *     processing the request.
+   *
+   *   This can also be set to NULL in order to emulate an Internet Explorer
+   *   submission of a form with a single text field, and pressing ENTER in that
+   *   textfield: under these conditions, no button information is added to the
+   *   POST data.
    * @param $options
    *   Options to be forwarded to url().
    * @param $headers
    *   An array containing additional HTTP request headers, each formatted as
    *   "name: value".
+   * @param $form_html_id
+   *   (optional) HTML ID of the form to be submitted. On some pages
+   *   there are many identical forms, so just using the value of the submit
+   *   button is not enough. For example: 'trigger-node-presave-assign-form'.
+   *   Note that this is not the Drupal $form_id, but rather the HTML ID of the
+   *   form, which is typically the same thing but with hyphens replacing the
+   *   underscores.
+   * @param $extra_post
+   *   (optional) A string of additional data to append to the POST submission.
+   *   This can be used to add POST data for which there are no HTML fields, as
+   *   is done by drupalPostAJAX(). This string is literally appended to the
+   *   POST data, so it must already be urlencoded and contain a leading "&"
+   *   (e.g., "&extra_var1=hello+world&extra_var2=you%26me").
    */
-  protected function drupalPost($path, $edit, $submit, array $options = array(), array $headers = array()) {
+  protected function drupalPost($path, $edit, $submit, array $options = array(), array $headers = array(), $form_html_id = NULL, $extra_post = NULL) {
     $submit_matches = FALSE;
+    $ajax = is_array($submit);
     if (isset($path)) {
-      $html = $this->drupalGet($path, $options);
+      $this->drupalGet($path, $options);
     }
     if ($this->parse()) {
       $edit_save = $edit;
       // Let's iterate over all the forms.
-      $forms = $this->xpath('//form');
+      $xpath = "//form";
+      if (!empty($form_html_id)) {
+        $xpath .= "[@id='" . $form_html_id . "']";
+      }
+      $forms = $this->xpath($xpath);
       foreach ($forms as $form) {
         // We try to set the fields of this form as specified in $edit.
         $edit = $edit_save;
         $post = array();
         $upload = array();
-        $submit_matches = $this->handleForm($post, $edit, $upload, $submit, $form);
-        $action = isset($form['action']) ? $this->getAbsoluteUrl($form['action']) : $this->getUrl();
+        $submit_matches = $this->handleForm($post, $edit, $upload, $ajax ? NULL : $submit, $form);
+        $action = isset($form['action']) ? $this->getAbsoluteUrl((string) $form['action']) : $this->getUrl();
+        if ($ajax) {
+          $action = $this->getAbsoluteUrl(!empty($submit['path']) ? $submit['path'] : 'system/ajax');
+          // Ajax callbacks verify the triggering element if necessary, so while
+          // we may eventually want extra code that verifies it in the
+          // handleForm() function, it's not currently a requirement.
+          $submit_matches = TRUE;
+        }
 
         // We post only if we managed to handle every field in edit and the
         // submit button matches.
-        if (!$edit && $submit_matches) {
+        if (!$edit && ($submit_matches || !isset($submit))) {
           $post_array = $post;
           if ($upload) {
             // TODO: cURL handles file uploads for us, but the implementation
             // is broken. This is a less than elegant workaround. Alternatives
             // are being explored at #253506.
             foreach ($upload as $key => $file) {
-//              $file = drupal_realpath($file);
-              $file = realpath($file);
+              $file = drupal_realpath($file);
               if ($file && is_file($file)) {
-                $post[$key] = '@' . $file;
+                // Use the new CurlFile class for file uploads when using PHP
+                // 5.5 or higher.
+                if (class_exists('CurlFile')) {
+                  $post[$key] = curl_file_create($file);
+                }
+                else {
+                  $post[$key] = '@' . $file;
+                }
               }
             }
           }
@@ -1645,14 +1771,14 @@ class DrupalWebTestCase extends DrupalTestCase {
               // http://www.w3.org/TR/html4/interact/forms.html#h-17.13.4.1
               $post[$key] = urlencode($key) . '=' . urlencode($value);
             }
-            $post = implode('&', $post);
+            $post = implode('&', $post) . $extra_post;
           }
           $out = $this->curlExec(array(CURLOPT_URL => $action, CURLOPT_POST => TRUE, CURLOPT_POSTFIELDS => $post, CURLOPT_HTTPHEADER => $headers));
           // Ensure that any changes to variables in the other thread are picked up.
           $this->refreshVariables();
 
           // Replace original page output with new output from redirected page(s).
-          if (($new = $this->checkForMetaRefresh())) {
+          if ($new = $this->checkForMetaRefresh()) {
             $out = $new;
           }
           $this->verbose('POST request to: ' . $path .
@@ -1666,9 +1792,223 @@ class DrupalWebTestCase extends DrupalTestCase {
       foreach ($edit as $name => $value) {
         $this->fail(t('Failed to set field @name to @value', array('@name' => $name, '@value' => $value)));
       }
-      $this->assertTrue($submit_matches, t('Found the @submit button', array('@submit' => $submit)));
+      if (!$ajax && isset($submit)) {
+        $this->assertTrue($submit_matches, t('Found the @submit button', array('@submit' => $submit)));
+      }
       $this->fail(t('Found the requested form fields at @path', array('@path' => $path)));
     }
+  }
+
+  /**
+   * Execute an Ajax submission.
+   *
+   * This executes a POST as ajax.js does. It uses the returned JSON data, an
+   * array of commands, to update $this->content using equivalent DOM
+   * manipulation as is used by ajax.js. It also returns the array of commands.
+   *
+   * @param $path
+   *   Location of the form containing the Ajax enabled element to test. Can be
+   *   either a Drupal path or an absolute path or NULL to use the current page.
+   * @param $edit
+   *   Field data in an associative array. Changes the current input fields
+   *   (where possible) to the values indicated.
+   * @param $triggering_element
+   *   The name of the form element that is responsible for triggering the Ajax
+   *   functionality to test. May be a string or, if the triggering element is
+   *   a button, an associative array where the key is the name of the button
+   *   and the value is the button label. i.e.) array('op' => t('Refresh')).
+   * @param $ajax_path
+   *   (optional) Override the path set by the Ajax settings of the triggering
+   *   element. In the absence of both the triggering element's Ajax path and
+   *   $ajax_path 'system/ajax' will be used.
+   * @param $options
+   *   (optional) Options to be forwarded to url().
+   * @param $headers
+   *   (optional) An array containing additional HTTP request headers, each
+   *   formatted as "name: value". Forwarded to drupalPost().
+   * @param $form_html_id
+   *   (optional) HTML ID of the form to be submitted, use when there is more
+   *   than one identical form on the same page and the value of the triggering
+   *   element is not enough to identify the form. Note this is not the Drupal
+   *   ID of the form but rather the HTML ID of the form.
+   * @param $ajax_settings
+   *   (optional) An array of Ajax settings which if specified will be used in
+   *   place of the Ajax settings of the triggering element.
+   *
+   * @return
+   *   An array of Ajax commands.
+   *
+   * @see drupalPost()
+   * @see ajax.js
+   */
+  protected function drupalPostAJAX($path, $edit, $triggering_element, $ajax_path = NULL, array $options = array(), array $headers = array(), $form_html_id = NULL, $ajax_settings = NULL) {
+    // Get the content of the initial page prior to calling drupalPost(), since
+    // drupalPost() replaces $this->content.
+    if (isset($path)) {
+      $this->drupalGet($path, $options);
+    }
+    $content = $this->content;
+    $drupal_settings = $this->drupalSettings;
+
+    // Get the Ajax settings bound to the triggering element.
+    if (!isset($ajax_settings)) {
+      if (is_array($triggering_element)) {
+        $xpath = '//*[@name="' . key($triggering_element) . '" and @value="' . current($triggering_element) . '"]';
+      }
+      else {
+        $xpath = '//*[@name="' . $triggering_element . '"]';
+      }
+      if (isset($form_html_id)) {
+        $xpath = '//form[@id="' . $form_html_id . '"]' . $xpath;
+      }
+      $element = $this->xpath($xpath);
+      $element_id = (string) $element[0]['id'];
+      $ajax_settings = $drupal_settings['ajax'][$element_id];
+    }
+
+    // Add extra information to the POST data as ajax.js does.
+    $extra_post = '';
+    if (isset($ajax_settings['submit'])) {
+      foreach ($ajax_settings['submit'] as $key => $value) {
+        $extra_post .= '&' . urlencode($key) . '=' . urlencode($value);
+      }
+    }
+    foreach ($this->xpath('//*[@id]') as $element) {
+      $id = (string) $element['id'];
+      $extra_post .= '&' . urlencode('ajax_html_ids[]') . '=' . urlencode($id);
+    }
+    if (isset($drupal_settings['ajaxPageState'])) {
+      $extra_post .= '&' . urlencode('ajax_page_state[theme]') . '=' . urlencode($drupal_settings['ajaxPageState']['theme']);
+      $extra_post .= '&' . urlencode('ajax_page_state[theme_token]') . '=' . urlencode($drupal_settings['ajaxPageState']['theme_token']);
+      foreach ($drupal_settings['ajaxPageState']['css'] as $key => $value) {
+        $extra_post .= '&' . urlencode("ajax_page_state[css][$key]") . '=1';
+      }
+      foreach ($drupal_settings['ajaxPageState']['js'] as $key => $value) {
+        $extra_post .= '&' . urlencode("ajax_page_state[js][$key]") . '=1';
+      }
+    }
+
+    // Unless a particular path is specified, use the one specified by the
+    // Ajax settings, or else 'system/ajax'.
+    if (!isset($ajax_path)) {
+      $ajax_path = isset($ajax_settings['url']) ? $ajax_settings['url'] : '';
+    }
+
+    // Submit the POST request.
+    $return = drupal_json_decode($this->drupalPost(NULL, $edit, array('path' => $ajax_path, 'triggering_element' => $triggering_element), $options, $headers, $form_html_id, $extra_post));
+    $this->assertIdentical($this->drupalGetHeader('X-Drupal-Ajax-Token'), '1', 'Ajax response header found.');
+
+    // Change the page content by applying the returned commands.
+    if (!empty($ajax_settings) && !empty($return)) {
+      // ajax.js applies some defaults to the settings object, so do the same
+      // for what's used by this function.
+      $ajax_settings += array(
+        'method' => 'replaceWith',
+      );
+      // DOM can load HTML soup. But, HTML soup can throw warnings, suppress
+      // them.
+      $dom = new DOMDocument();
+      @$dom->loadHTML($content);
+      // XPath allows for finding wrapper nodes better than DOM does.
+      $xpath = new DOMXPath($dom);
+      foreach ($return as $command) {
+        switch ($command['command']) {
+          case 'settings':
+            $drupal_settings = drupal_array_merge_deep($drupal_settings, $command['settings']);
+            break;
+
+          case 'insert':
+            $wrapperNode = NULL;
+            // When a command doesn't specify a selector, use the
+            // #ajax['wrapper'] which is always an HTML ID.
+            if (!isset($command['selector'])) {
+              $wrapperNode = $xpath->query('//*[@id="' . $ajax_settings['wrapper'] . '"]')->item(0);
+            }
+            // @todo Ajax commands can target any jQuery selector, but these are
+            //   hard to fully emulate with XPath. For now, just handle 'head'
+            //   and 'body', since these are used by ajax_render().
+            elseif (in_array($command['selector'], array('head', 'body'))) {
+              $wrapperNode = $xpath->query('//' . $command['selector'])->item(0);
+            }
+            if ($wrapperNode) {
+              // ajax.js adds an enclosing DIV to work around a Safari bug.
+              $newDom = new DOMDocument();
+              // DOM can load HTML soup. But, HTML soup can throw warnings,
+              // suppress them.
+              $newDom->loadHTML('<div>' . $command['data'] . '</div>');
+              // Suppress warnings thrown when duplicate HTML IDs are
+              // encountered. This probably means we are replacing an element
+              // with the same ID.
+              $newNode = @$dom->importNode($newDom->documentElement->firstChild->firstChild, TRUE);
+              $method = isset($command['method']) ? $command['method'] : $ajax_settings['method'];
+              // The "method" is a jQuery DOM manipulation function. Emulate
+              // each one using PHP's DOMNode API.
+              switch ($method) {
+                case 'replaceWith':
+                  $wrapperNode->parentNode->replaceChild($newNode, $wrapperNode);
+                  break;
+                case 'append':
+                  $wrapperNode->appendChild($newNode);
+                  break;
+                case 'prepend':
+                  // If no firstChild, insertBefore() falls back to
+                  // appendChild().
+                  $wrapperNode->insertBefore($newNode, $wrapperNode->firstChild);
+                  break;
+                case 'before':
+                  $wrapperNode->parentNode->insertBefore($newNode, $wrapperNode);
+                  break;
+                case 'after':
+                  // If no nextSibling, insertBefore() falls back to
+                  // appendChild().
+                  $wrapperNode->parentNode->insertBefore($newNode, $wrapperNode->nextSibling);
+                  break;
+                case 'html':
+                  foreach ($wrapperNode->childNodes as $childNode) {
+                    $wrapperNode->removeChild($childNode);
+                  }
+                  $wrapperNode->appendChild($newNode);
+                  break;
+              }
+            }
+            break;
+
+          case 'updateBuildId':
+            $buildId = $xpath->query('//input[@name="form_build_id" and @value="' . $command['old'] . '"]')->item(0);
+            if ($buildId) {
+              $buildId->setAttribute('value', $command['new']);
+            }
+            break;
+
+          // @todo Add suitable implementations for these commands in order to
+          //   have full test coverage of what ajax.js can do.
+          case 'remove':
+            break;
+          case 'changed':
+            break;
+          case 'css':
+            break;
+          case 'data':
+            break;
+          case 'restripe':
+            break;
+          case 'add_css':
+            break;
+        }
+      }
+      $content = $dom->saveHTML();
+    }
+    $this->drupalSetContent($content);
+    $this->drupalSetSettings($drupal_settings);
+
+    $verbose = 'AJAX POST request to: ' . $path;
+    $verbose .= '<br />AJAX callback path: ' . $ajax_path;
+    $verbose .= '<hr />Ending URL: ' . $this->getUrl();
+    $verbose .= '<hr />' . $this->content;
+
+    $this->verbose($verbose);
+
+    return $return;
   }
 
   /**
@@ -1897,11 +2237,18 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   format and return values see the SimpleXML documentation,
    *   http://us.php.net/manual/function.simplexml-element-xpath.php.
    */
-  protected function xpath($xpath) {
+  protected function xpath($xpath, array $arguments = array()) {
     if ($this->parse()) {
-      return $this->elements->xpath($xpath);
+      $xpath = $this->buildXPathQuery($xpath, $arguments);
+      $result = $this->elements->xpath($xpath);
+      // Some combinations of PHP / libxml versions return an empty array
+      // instead of the documented FALSE. Forcefully convert any falsish values
+      // to an empty array to allow foreach(...) constructions.
+      return $result ? $result : array();
     }
-    return FALSE;
+    else {
+      return FALSE;
+    }
   }
 
   /**
@@ -2170,6 +2517,38 @@ class DrupalWebTestCase extends DrupalTestCase {
     $this->url = $url;
     $this->plainTextContent = FALSE;
     $this->elements = FALSE;
+  }
+
+  /**
+   * Sets the value of the Drupal.settings JavaScript variable for the currently loaded page.
+   */
+  protected function drupalSetSettings($settings) {
+    $this->drupalSettings = $settings;
+  }
+
+  /**
+   * Pass if the internal browser's URL matches the given path.
+   *
+   * @param $path
+   *   The expected system path.
+   * @param $options
+   *   (optional) Any additional options to pass for $path to url().
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to, defaults to 'Other'.
+   *
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertUrl($path, array $options = array(), $message = '', $group = 'Other') {
+    if (!$message) {
+      $message = t('Current URL is @url.', array(
+        '@url' => var_export(url($path, $options), TRUE),
+      ));
+    }
+    $options['absolute'] = TRUE;
+    return $this->assertEqual($this->getUrl(), url($path, $options), $message, $group);
   }
 
   /**
@@ -2502,25 +2881,28 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
-   * Assert that a field does not exist in the current page by the given XPath.
+   * Asserts that a field doesn't exist or its value doesn't match, by XPath.
    *
    * @param $xpath
    *   XPath used to find the field.
    * @param $value
-   *   Value of the field to assert.
+   *   (optional) Value for the field, to assert that the field's value on the
+   *   page doesn't match it. You may pass in NULL to skip checking the
+   *   value, while still checking that the field doesn't exist.
    * @param $message
-   *   Message to display.
+   *   (optional) Message to display.
    * @param $group
-   *   The group this message belongs to.
+   *   (optional) The group this message belongs to.
+   *
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoFieldByXPath($xpath, $value, $message, $group = 'Other') {
+  protected function assertNoFieldByXPath($xpath, $value = NULL, $message = '', $group = 'Other') {
     $fields = $this->xpath($xpath);
 
     // If value specified then check array for match.
     $found = TRUE;
-    if ($value) {
+    if (isset($value)) {
       $found = FALSE;
       if ($fields) {
         foreach ($fields as $field) {
@@ -2534,12 +2916,14 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
-   * Assert that a field exists in the current page with the given name and value.
+   * Asserts that a field exists in the current page with the given name and value.
    *
    * @param $name
    *   Name of field to assert.
    * @param $value
-   *   Value of the field to assert.
+   *   (optional) Value of the field to assert. You may pass in NULL (default)
+   *   to skip checking the actual value, while still checking that the field
+   *   exists.
    * @param $message
    *   Message to display.
    * @param $group
@@ -2547,19 +2931,35 @@ class DrupalWebTestCase extends DrupalTestCase {
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertFieldByName($name, $value = '', $message = '') {
-    return $this->assertFieldByXPath($this->constructFieldXpath('name', $name), $value, $message ? $message : t('Found field by name @name', array('@name' => $name)), t('Browser'));
+  protected function assertFieldByName($name, $value = NULL, $message = NULL) {
+    if (!isset($message)) {
+      if (!isset($value)) {
+        $message = t('Found field with name @name', array(
+          '@name' => var_export($name, TRUE),
+        ));
+      }
+      else {
+        $message = t('Found field with name @name and value @value', array(
+          '@name' => var_export($name, TRUE),
+          '@value' => var_export($value, TRUE),
+        ));
+      }
+    }
+    return $this->assertFieldByXPath($this->constructFieldXpath('name', $name), $value, $message, t('Browser'));
   }
 
   /**
-   * Assert that a field does not exist with the given name and value.
+   * Asserts that a field does not exist with the given name and value.
    *
    * @param $name
    *   Name of field to assert.
    * @param $value
-   *   Value of the field to assert.
+   *   (optional) Value for the field, to assert that the field's value on the
+   *   page doesn't match it. You may pass in NULL to skip checking the
+   *   value, while still checking that the field doesn't exist. However, the
+   *   default value ('') asserts that the field value is not an empty string.
    * @param $message
-   *   Message to display.
+   *   (optional) Message to display.
    * @param $group
    *   The group this message belongs to.
    * @return
@@ -2616,7 +3016,7 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   TRUE on pass, FALSE on fail.
    */
   protected function assertFieldChecked($id, $message = '') {
-    $elements = $this->xpath('//input[@id="' . $id . '"]');
+    $elements = $this->xpath('//input[@id=:id]', array(':id' => $id));
     return $this->assertTrue(isset($elements[0]) && !empty($elements[0]['checked']), $message ? $message : t('Checkbox field @id is checked.', array('@id' => $id)), t('Browser'));
   }
 
@@ -2631,8 +3031,44 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   TRUE on pass, FALSE on fail.
    */
   protected function assertNoFieldChecked($id, $message = '') {
-    $elements = $this->xpath('//input[@id="' . $id . '"]');
+    $elements = $this->xpath('//input[@id=:id]', array(':id' => $id));
     return $this->assertTrue(isset($elements[0]) && empty($elements[0]['checked']), $message ? $message : t('Checkbox field @id is not checked.', array('@id' => $id)), t('Browser'));
+  }
+
+  /**
+   * Asserts that a select option in the current page is checked.
+   *
+   * @param $id
+   *   ID of select field to assert.
+   * @param $option
+   *   Option to assert.
+   * @param $message
+   *   (optional) Message to display.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   *
+   * @todo $id is unusable. Replace with $name.
+   */
+  protected function assertOptionSelected($id, $option, $message = '') {
+    $elements = $this->xpath('//select[@id=:id]//option[@value=:option]', array(':id' => $id, ':option' => $option));
+    return $this->assertTrue(isset($elements[0]) && !empty($elements[0]['selected']), $message ? $message : t('Option @option for field @id is selected.', array('@option' => $option, '@id' => $id)), t('Browser'));
+  }
+
+  /**
+   * Asserts that a select option in the current page is not checked.
+   *
+   * @param $id
+   *   ID of select field to assert.
+   * @param $option
+   *   Option to assert.
+   * @param $message
+   *   (optional) Message to display.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertNoOptionSelected($id, $option, $message = '') {
+    $elements = $this->xpath('//select[@id=:id]//option[@value=:option]', array(':id' => $id, ':option' => $option));
+    return $this->assertTrue(isset($elements[0]) && empty($elements[0]['selected']), $message ? $message : t('Option @option for field @id is not selected.', array('@option' => $option, '@id' => $id)), t('Browser'));
   }
 
   /**
@@ -2665,6 +3101,36 @@ class DrupalWebTestCase extends DrupalTestCase {
    */
   protected function assertNoField($field, $message = '', $group = 'Other') {
     return $this->assertNoFieldByXPath($this->constructFieldXpath('name', $field) . '|' . $this->constructFieldXpath('id', $field), '', $message, $group);
+  }
+
+  /**
+   * Asserts that each HTML ID is used for just a single element.
+   *
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to.
+   * @param $ids_to_skip
+   *   An optional array of ids to skip when checking for duplicates. It is
+   *   always a bug to have duplicate HTML IDs, so this parameter is to enable
+   *   incremental fixing of core code. Whenever a test passes this parameter,
+   *   it should add a "todo" comment above the call to this function explaining
+   *   the legacy bug that the test wishes to ignore and including a link to an
+   *   issue that is working to fix that legacy bug.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertNoDuplicateIds($message = '', $group = 'Other', $ids_to_skip = array()) {
+    $status = TRUE;
+    foreach ($this->xpath('//*[@id]') as $element) {
+      $id = (string) $element['id'];
+      if (isset($seen_ids[$id]) && !in_array($id, $ids_to_skip)) {
+        $this->fail(t('The HTML ID %id is unique.', array('%id' => $id)), $group);
+        $status = FALSE;
+      }
+      $seen_ids[$id] = TRUE;
+    }
+    return $this->assert($status, $message, $group);
   }
 
   /**
