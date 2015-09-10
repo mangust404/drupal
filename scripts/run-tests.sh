@@ -155,6 +155,8 @@ All arguments are long options.
 
   --verbose   Output detailed assertion messages in addition to summary.
 
+  --errors    Show only failed examples when all the tests will be finished.
+
   <test1>[,<test2>[,<test3> ...]]
 
               One or more tests to be run. By default, these are interpreted
@@ -198,6 +200,7 @@ function simpletest_script_parse_args() {
     'file' => FALSE,
     'color' => FALSE,
     'verbose' => FALSE,
+    'errors' => FALSE,
     'test_names' => array(),
     // Used internally.
     'test-id' => NULL,
@@ -554,23 +557,36 @@ function simpletest_script_reporter_display_results() {
   echo "Test run duration: " . format_interval($end['time'] / 1000);
   echo "\n";
 
+  $results_map = array(
+    'pass' => 'Pass',
+    'fail' => 'Fail',
+    'exception' => 'Exception'
+  );
+
   if ($args['verbose']) {
     // Report results.
     echo "Detailed test results:\n";
     echo "----------------------\n";
     echo "\n";
 
-    $results_map = array(
-      'pass' => 'Pass',
-      'fail' => 'Fail',
-      'exception' => 'Exception'
-    );
-
 //    $results = db_query("SELECT * FROM {simpletest} WHERE test_id = :test_id ORDER BY test_class, message_id", array(':test_id' => $test_id));
     $results = db_query("SELECT * FROM {simpletest} WHERE test_id = %d ORDER BY test_class, message_id", $test_id);
 
     $test_class = '';
 //    foreach ($results as $result) {
+    while ($result = db_fetch_object($results)) {
+      if (isset($results_map[$result->status])) {
+        if ($result->test_class != $test_class) {
+          // Display test class every time results are for new test class.
+          echo "\n\n---- $result->test_class ----\n\n\n";
+          $test_class = $result->test_class;
+        }
+
+        simpletest_script_format_result($result);
+      }
+    }
+  } else if($args['errors']) {
+    $results = db_query("SELECT * FROM {simpletest} WHERE test_id = %d AND status != 'pass' ORDER BY test_class, message_id", $test_id);
     while ($result = db_fetch_object($results)) {
       if (isset($results_map[$result->status])) {
         if ($result->test_class != $test_class) {
