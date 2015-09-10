@@ -140,7 +140,7 @@ function system_elements() {
   $type['textarea'] = array('#input' => TRUE, '#cols' => 60, '#rows' => 5, '#resizable' => TRUE, '#process' => array('form_expand_ahah'));
   $type['radios'] = array('#input' => TRUE, '#process' => array('form_process_radios'));
   $type['radio'] = array('#input' => TRUE, '#default_value' => NULL, '#process' => array('form_expand_ahah'));
-  $type['checkboxes'] = array('#input' => TRUE, '#process' => array('form_process_checkboxes'), '#tree' => TRUE);
+  $type['checkboxes'] = array('#input' => TRUE, '#process' => array('expand_checkboxes'), '#tree' => TRUE);
   $type['checkbox'] = array('#input' => TRUE, '#return_value' => 1, '#process' => array('form_process_checkbox', 'form_expand_ahah'));
   $type['select'] = array('#input' => TRUE, '#size' => 0, '#multiple' => FALSE, '#process' => array('form_process_select', 'form_expand_ahah'));
   $type['weight'] = array('#input' => TRUE, '#delta' => 10, '#default_value' => 0, '#process' => array('process_weight', 'form_expand_ahah'));

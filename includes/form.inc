@@ -1561,7 +1561,7 @@ function form_type_checkbox_value($form, $edit = FALSE) {
     // as unchecked. The string '0' is allowed for #return_value. The most
     // common use-case for setting #return_value to either 0 or '0' is for the
     // first option within a 0-indexed array of checkboxes, and for this,
-    // form_process_checkboxes() uses the string rather than the integer.
+    // expand_checkboxes() uses the string rather than the integer.
     return isset($edit) ? $form['#return_value'] : 0;
   }
 }
@@ -2573,7 +2573,7 @@ function form_process_checkbox($element, $form_state) {
 /**
  * Processes a checkboxes form element.
  */
-function form_process_checkboxes($element) {
+function expand_checkboxes($element) {
   $value = is_array($element['#value']) ? $element['#value'] : array();
   $element['#tree'] = TRUE;
   if (count($element['#options']) > 0) {
