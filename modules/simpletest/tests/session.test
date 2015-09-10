@@ -256,6 +256,7 @@ class SessionTestCase extends DrupalWebTestCase {
 
     // Change cookie file for user.
     $this->cookieFile =  file_directory_temp() . '/cookie.' . $uid . '.txt';
+    if(is_file($this->cookieFile)) unlink($this->cookieFile);
     $this->additionalCurlOptions[CURLOPT_COOKIEFILE] = $this->cookieFile;
     $this->additionalCurlOptions[CURLOPT_COOKIESESSION] = TRUE;
     $this->drupalGet('session-test/get');
