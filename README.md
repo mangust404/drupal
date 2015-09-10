@@ -6,3 +6,4 @@
   - Common functions
   - Default caching system
   - Form API tests
+  - Session tests
