@@ -3382,13 +3382,21 @@ function drupal_add_js($data = NULL, $options = NULL) {
       if(isset($args[2])) {
         $options['media'] = $args[2];
       }
-      if(isset($args[3])) {
-        $options['preprocess'] = $args[3];
+      if(isset($args[3]) && !empty($args[3])) {
+        $options['attributes']['defer'] = 'defer';
+      }
+      if(isset($args[4])) {
+        $options['cache'] = $args[4];
+      }
+      if(isset($args[5])) {
+        $options['preprocess'] = $args[5];
       }
 
       if($options['type'] == 'theme') {
         $options['group'] = JS_THEME;
         $options['every_page'] = TRUE;
+      } else if($options['type'] == 'core') {
+        $options['type'] = 'file';
       }
     }
   }
