@@ -6260,6 +6260,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
     }
 
     if ($fatal) {
+      drupal_set_header('Status: 500 Service unavailable (with message)');
       drupal_set_title(t('Error'));
       // We fallback to a maintenance page at this point, because the page generation
       // itself can generate errors.
