@@ -18,6 +18,13 @@ class SessionTestCase extends DrupalWebTestCase {
     parent::setUp('session_test');
   }
 
+  function tearDown() {
+    // clean all cookies temp files
+    $this->curlClose();
+    shell_exec('rm -f ' . file_directory_temp() . '/cookie.*');
+    parent::tearDown();
+  }
+
   /**
    * Tests for drupal_save_session() and drupal_session_regenerate().
    */
@@ -256,7 +263,6 @@ class SessionTestCase extends DrupalWebTestCase {
 
     // Change cookie file for user.
     $this->cookieFile =  file_directory_temp() . '/cookie.' . $uid . '.txt';
-    if(is_file($this->cookieFile)) unlink($this->cookieFile);
     $this->additionalCurlOptions[CURLOPT_COOKIEFILE] = $this->cookieFile;
     $this->additionalCurlOptions[CURLOPT_COOKIESESSION] = TRUE;
     $this->drupalGet('session-test/get');

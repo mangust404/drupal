@@ -1421,6 +1421,9 @@ function drupal_set_message($message = NULL, $type = 'status', $repeat = TRUE) {
     if ($repeat || !in_array($message, $_SESSION['messages'][$type])) {
       $_SESSION['messages'][$type][] = $message;
     }
+
+    // Mark this page as being uncacheable.
+    drupal_page_is_cacheable(FALSE);
   }
 
   // messages not set when DB connection fails
