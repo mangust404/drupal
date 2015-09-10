@@ -79,6 +79,11 @@ function drupal_get_form($form_id) {
     // and move on to form display. See _batch_finished() function.
     $form_state = $_SESSION['batch_form_state'];
     unset($_SESSION['batch_form_state']);
+
+    $args_temp = $args;
+    $args_temp[0] = &$form_state;
+
+    $form = drupal_rebuild_form($form_id, $form_state, $args_temp, array('#post' => $form_state['values']));
   }
   else {
     // If the incoming $_POST contains a form_build_id, we'll check the
@@ -3227,6 +3232,16 @@ function batch_process($redirect = NULL, $url = NULL) {
 
       // Actually store the batch data and the token generated form the batch id.
       db_query("UPDATE {batch} SET token = '%s', batch = '%s' WHERE bid = %d", drupal_get_token($batch['id']), serialize($batch), $batch['id']);
+
+      // Set the batch number in the session to guarantee that it will stay alive.
+      $_SESSION['batches'][$batch['id']] = TRUE;
+
+      // Workaround for new "lazy" sessions. 
+      // Session will not start for anonymous user and batch will not work
+      // because token is based on session_id.
+      if(!empty($GLOBALS['lazy_session'])) {
+        drupal_session_commit();
+      }
 
       drupal_goto($batch['url'], 'op=start&id='. $batch['id']);
     }
