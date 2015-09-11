@@ -397,7 +397,7 @@ abstract class DrupalTestCase {
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
   protected function assertNotIdentical($first, $second, $message = '', $group = 'Other') {
-    return $this->assert($first !== $second, $message ? $message : t('First value is not identical to second value'), $group, NULL, t("Expected: @first\n but got: \n @second.", array('@first' => var_export($first, TRUE), '@second' => var_export($second, TRUE))));
+    return $this->assert($first !== $second, $message ? $message : t('First value is not identical to second value'), $group, NULL, t("Expected value: @first\n not to be the same as: \n @second.", array('@first' => var_export($first, TRUE), '@second' => var_export($second, TRUE))));
   }
 
   /**
