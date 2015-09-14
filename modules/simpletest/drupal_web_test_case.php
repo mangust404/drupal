@@ -898,25 +898,27 @@ class DrupalWebTestCase extends DrupalTestCase {
    */
   protected function drupalGetTestFiles($type, $size = NULL) {
     if (empty($this->generatedTestFiles)) {
+      $path = file_directory_path();
+
       // Generate binary test files.
       $lines = array(64, 1024);
       $count = 0;
       foreach ($lines as $line) {
-        simpletest_generate_file('binary-' . $count++, 64, $line, 'binary');
+        simpletest_generate_file($path . '/binary-' . $count++, 64, $line, 'binary');
       }
 
       // Generate text test files.
       $lines = array(16, 256, 1024, 2048, 20480);
       $count = 0;
       foreach ($lines as $line) {
-        simpletest_generate_file('text-' . $count++, 64, $line);
+        simpletest_generate_file($path . '/text-' . $count++, 64, $line);
       }
 
       // Copy other test files from simpletest.
       $original = drupal_get_path('module', 'simpletest') . '/files';
       $files = file_scan_directory($original, '/(html|image|javascript|php|sql)-.*/');
       foreach ($files as $file) {
-        file_copy($file->filename, file_directory_path());
+        file_copy($file->filename, $path);
       }
 
       $this->generatedTestFiles = TRUE;
