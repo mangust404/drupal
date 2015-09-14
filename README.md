@@ -10,3 +10,4 @@
   - Error tests
   - File tests
   - Image tests
+  - Locking test
