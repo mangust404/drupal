@@ -1222,6 +1222,9 @@ class DrupalWebTestCase extends DrupalTestCase {
     // Install additional modules one at a time in order to make sure that the
     // list of modules is updated between each module's installation.
     $modules = func_get_args();
+    if (isset($modules[0]) && is_array($modules[0])) {
+      $modules = $modules[0];
+    }
     foreach ($modules as $module) {
 //      drupal_install_modules(array($module), TRUE);
       module_enable(array($module));
