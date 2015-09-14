@@ -8,3 +8,4 @@
   - Form API tests
   - Session tests
   - Error tests
+  - File tests
