@@ -216,8 +216,9 @@ function drupal_wrap_mail($text, $indent = '') {
   $soft = strpos($clean_indent, ' ') === FALSE;
   // Check if the string has line breaks.
   if (strpos($text, "\n") !== FALSE) {
-    // Remove trailing spaces to make existing breaks hard.
-    $text = preg_replace('/ +\n/m', "\n", $text);
+    // Remove trailing spaces to make existing breaks hard, but leave signature
+    // marker untouched (RFC 3676, Section 4.3).
+    $text = preg_replace('/(?(?<!^--) +\n|  +\n)/m', "\n", $text);
     // Wrap each line at the needed width.
     $lines = explode("\n", $text);
     array_walk($lines, '_drupal_wrap_mail_line', array('soft' => $soft, 'length' => strlen($indent)));
@@ -287,7 +288,7 @@ function drupal_html_to_text($string, $allowed_tags = NULL) {
   if (count($urls)) {
     $footnotes .= "\n";
     for ($i = 0, $max = count($urls); $i < $max; $i++) {
-      $footnotes .= '['. ($i + 1) .'] '. $urls[$i] ."\n";
+      $footnotes .= '[' . ($i + 1) . '] ' . $urls[$i] . "\n";
     }
   }
 
@@ -327,7 +328,7 @@ function drupal_html_to_text($string, $allowed_tags = NULL) {
           $indent[] = count($lists) ? ' "' : '>';
           break;
         case 'li':
-          $indent[] = is_numeric($lists[0]) ? ' '. $lists[0]++ .') ' : ' * ';
+          $indent[] = isset($lists[0]) && is_numeric($lists[0]) ? ' ' . $lists[0]++ . ') ' : ' * ';
           break;
         case 'dd':
           $indent[] = '    ';
@@ -341,7 +342,7 @@ function drupal_html_to_text($string, $allowed_tags = NULL) {
         case '/blockquote':
           if (count($lists)) {
             // Append closing quote for inline quotes (immediately).
-            $output = rtrim($output, "> \n") ."\"\n";
+            $output = rtrim($output, "> \n") . "\"\n";
             $chunk = ''; // Ensure blank new-line.
           }
           // Fall-through
@@ -391,9 +392,10 @@ function drupal_html_to_text($string, $allowed_tags = NULL) {
     }
     // Process blocks of text.
     else {
-      // Convert inline HTML text to plain text.
-      $value = trim(preg_replace('/\s+/', ' ', decode_entities($value)));
-      if (strlen($value)) {
+      // Convert inline HTML text to plain text; not removing line-breaks or
+      // white-space, since that breaks newlines when sanitizing plain-text.
+      $value = trim(decode_entities($value));
+      if (drupal_strlen($value)) {
         $chunk = $value;
       }
     }
@@ -423,7 +425,7 @@ function drupal_html_to_text($string, $allowed_tags = NULL) {
  */
 function _drupal_wrap_mail_line(&$line, $key, $values) {
   // Use soft-breaks only for purely quoted or unindented text.
-  $line = wordwrap($line, 77 - $values['length'], $values['soft'] ? "  \n" : "\n");
+  $line = wordwrap($line, 77 - $values['length'], $values['soft'] ? " \n" : "\n");
   // Break really long words at the maximum width allowed.
   $line = wordwrap($line, 996 - $values['length'], $values['soft'] ? " \n" : "\n");
 }
@@ -478,5 +480,5 @@ function _drupal_html_to_text_pad($text, $pad, $prefix = '') {
   }
   $n = max(0, 79 - (strlen($text) - $p) - strlen($prefix));
   // Add prefix and padding, and restore linebreak.
-  return $text . $prefix . str_repeat($pad, $n) ."\n";
+  return $text . $prefix . str_repeat($pad, $n) . "\n";
 }

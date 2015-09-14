@@ -11,3 +11,4 @@
   - File tests
   - Image tests
   - Locking test
+  - Mail test (convert html to text only)
