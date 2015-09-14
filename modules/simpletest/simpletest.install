@@ -63,36 +63,6 @@ function simpletest_install() {
 }
 
 /**
- * Generate test file.
- */
-function simpletest_generate_file($filename, $width, $lines, $type = 'binary-text') {
-  $size = $width * $lines - $lines;
-
-  // Generate random text
-  $text = '';
-  for ($i = 0; $i < $size; $i++) {
-    switch ($type) {
-      case 'text':
-        $text .= chr(rand(32, 126));
-        break;
-      case 'binary':
-        $text .= chr(rand(0, 31));
-        break;
-      case 'binary-text':
-      default:
-        $text .= rand(0, 1);
-        break;
-    }
-  }
-  $text = wordwrap($text, $width - 1, "\n", TRUE) . "\n"; // Add \n for symetrical file.
-
-  // Create filename.
-  $path = file_directory_path() . '/simpletest/';
-  $count = simpletest_get_file_count($path, $filename);
-  file_put_contents($path . $filename . '-' . ($count + 1) . '.txt', $text);
-}
-
-/**
  * Get the number of files that have the specified filename base.
  */
 function simpletest_get_file_count($directory, $filename) {
