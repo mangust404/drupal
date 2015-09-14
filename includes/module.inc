@@ -656,7 +656,7 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
   }
 
   // Fetch implementations from cache.
-  if (empty($implementations)) {
+  if (empty($implementations) && function_exists('cache_get')) {
     $implementations = cache_get('module_implements', 'cache');
     if (empty($implementations)) {
       $implementations = array();
