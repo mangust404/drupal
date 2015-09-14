@@ -589,6 +589,7 @@ function update_check_requirements() {
 // Some unavoidable errors happen because the database is not yet up-to-date.
 // Our custom error handler is not yet installed, so we just suppress them.
 ini_set('display_errors', FALSE);
+define('DRUPAL_ROOT', getcwd());
 
 require_once './includes/bootstrap.inc';
 
