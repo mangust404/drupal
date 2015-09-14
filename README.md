@@ -9,3 +9,4 @@
   - Session tests
   - Error tests
   - File tests
+  - Image tests
