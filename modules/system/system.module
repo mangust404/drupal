@@ -939,7 +939,7 @@ function system_update_files_database(&$files, $type) {
       unset($file->exists);
     }
     else {
-      db_query("INSERT INTO {system} (filename, name, type, owner, info) VALUES ('%s', '%s', '%s', '%s', '%s')", $file->uri, $file->name, $type, isset($file->owner) ? $file->owner : '', serialize($file->info));
+      db_query("INSERT INTO {system} (filename, name, type, owner, info) VALUES ('%s', '%s', '%s', '%s', '%s')", $file->filename, $file->name, $type, isset($file->owner) ? $file->owner : '', serialize($file->info));
 
       $file->type = $type;
       $file->status = 0;
@@ -1102,7 +1102,7 @@ function _system_theme_data() {
     $engines = drupal_system_listing('\.engine$', 'themes/engines');
 
     $defaults = system_theme_default();
-
+ini_set('display_errors', 'on');
     $sub_themes = array();
     // Read info files for each theme
     foreach ($themes as $key => $theme) {
@@ -2220,7 +2220,7 @@ function _system_rebuild_module_data() {
   $profile = drupal_get_profile();
   $modules[$profile] = new stdClass();
   $modules[$profile]->name = $profile;
-  $modules[$profile]->uri = 'profiles/' . $profile . '/' . $profile . '.profile';
+  $modules[$profile]->filename = 'profiles/' . $profile . '/' . $profile . '.profile';
   $modules[$profile]->filename = $profile . '.profile';
 
   // Installation profile hooks are always executed last.
@@ -2242,10 +2242,10 @@ function _system_rebuild_module_data() {
   foreach ($modules as $key => $module) {
     // The module system uses the key 'filename' instead of 'uri' so copy the
     // value so it will be used by the modules system.
-    $modules[$key]->filename = $module->uri;
+    $modules[$key]->filename = $module->filename;
 
     // Look for the info file.
-    $module->info = drupal_parse_info_file(dirname($module->uri) . '/' . $module->name . '.info');
+    $module->info = drupal_parse_info_file(dirname($module->filename) . '/' . $module->name . '.info');
 
     // Skip modules that don't provide info.
     if (empty($module->info)) {
@@ -2255,13 +2255,13 @@ function _system_rebuild_module_data() {
 
     // Add the info file modification time, so it becomes available for
     // contributed modules to use for ordering module lists.
-    $module->info['mtime'] = filemtime(dirname($module->uri) . '/' . $module->name . '.info');
+    $module->info['mtime'] = filemtime(dirname($module->filename) . '/' . $module->name . '.info');
 
     // Merge in defaults and save.
     $modules[$key]->info = $module->info + $defaults;
 
     // Prefix stylesheets and scripts with module path.
-    $path = dirname($module->uri);
+    $path = dirname($module->filename);
     if (isset($module->info['stylesheets'])) {
       $module->info['stylesheets'] = _system_info_add_path($module->info['stylesheets'], $path);
     }

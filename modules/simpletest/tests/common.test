@@ -2770,7 +2770,7 @@ class DrupalSystemListingTestCase extends DrupalWebTestCase {
     foreach ($expected_directories as $module => $directories) {
       $expected_directory = array_shift($directories);
       $expected_filename = "$expected_directory/$module/$module.module";
-      $this->assertEqual($expected_filename, $files[$module]->uri, format_string('Module @module was found at @filename.', array('@module' => $module, '@filename' => $expected_filename)));
+      $this->assertEqual($expected_filename, $files[$module]->filename, format_string('Module @module was found at @filename.', array('@module' => $module, '@filename' => $expected_filename)));
     }
   }
 }

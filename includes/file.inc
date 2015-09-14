@@ -38,15 +38,36 @@ define('FILE_STATUS_PERMANENT', 1);
  * @return A string containing a URL that can be used to download the file.
  */
 function file_create_url($path) {
-  // Strip file_directory_path from $path. We only include relative paths in URLs.
-  if (strpos($path, file_directory_path() .'/') === 0) {
-    $path = trim(substr($path, strlen(file_directory_path())), '\\/');
+  // Allow the URI to be altered, e.g. to serve a file from a CDN or static
+  // file server. Backport from D7.
+  drupal_alter('file_url', $path);
+
+  // Allow for:
+  // - full HTTP path, e.g. http://example.com/foo.jpg
+  // - root-relative URIs (e.g. /foo.jpg in http://example.com/foo.jpg)
+  // - protocol-relative URIs (e.g. //example.com/bar.jpg, which is expanded to
+  //   http://example.com/bar.jpg by the browser when viewing a page over
+  //   HTTP and to https://example.com/bar.jpg when viewing a HTTPS page)
+  // Both types of relative URIs are characterized by a leading slash, hence
+  // we can use a single check.
+  // Check if drupal_alter already created absolute url or protocol-relative url.
+  if(strpos($path, '://') !== FALSE || ($path{0} == '/' && $path{1} == '/')) {
+    return $path;
   }
-  switch (variable_get('file_downloads', FILE_DOWNLOADS_PUBLIC)) {
-    case FILE_DOWNLOADS_PUBLIC:
-      return $GLOBALS['base_url'] .'/'. file_directory_path() .'/'. str_replace('\\', '/', $path);
-    case FILE_DOWNLOADS_PRIVATE:
-      return url('system/files/'. $path, array('absolute' => TRUE));
+
+  // Strip file_directory_path from $path. We only include relative paths in URLs.
+  if (strpos($path, file_directory_path() . '/') === 0) {
+    $path = trim(substr($path, strlen(file_directory_path())), '\\/');
+    switch (variable_get('file_downloads', FILE_DOWNLOADS_PUBLIC)) {
+      case FILE_DOWNLOADS_PUBLIC:
+        return $GLOBALS['base_url'] . '/' . file_directory_path() . '/' . drupal_encode_path(str_replace('\\', '/', $path));
+      case FILE_DOWNLOADS_PRIVATE:
+        return url('system/files/' . $path, array('absolute' => TRUE));
+    }
+  } else {
+    // If file is not within file directory path, then it is a shipped file.
+    // Therefore, return the urlencoded URI with the base URL prepended.
+    return $GLOBALS['base_url'] . '/' . drupal_encode_path($path);
   }
 }
 
@@ -110,7 +131,7 @@ function file_check_directory(&$directory, $mode = 0, $form_item = NULL) {
 
   // Check if directory exists.
   if (!is_dir($directory)) {
-    if (($mode & FILE_CREATE_DIRECTORY) && @mkdir($directory)) {
+    if (($mode & FILE_CREATE_DIRECTORY) && @mkdir($directory, 0755, TRUE)) {
       drupal_set_message(t('The directory %directory has been created.', array('%directory' => $directory)));
       @chmod($directory, 0775); // Necessary for non-webserver users.
     }
@@ -226,7 +247,7 @@ function file_check_path(&$path) {
   }
 
   // Check if path is a possible dir/file.
-  $filename = basename($path);
+  $filename = drupal_basename($path);
   $path = dirname($path);
   if (file_check_directory($path)) {
     return $filename;
@@ -256,13 +277,69 @@ function file_check_location($source, $directory = '') {
   }
   else {
     // This file does not yet exist
-    $source = realpath(dirname($source)) .'/'. basename($source);
+    $source = realpath(dirname($source)) .'/'. drupal_basename($source);
   }
   $directory = realpath($directory);
   if ($directory && strpos($source, $directory) !== 0) {
     return 0;
   }
   return $source;
+}
+
+/**
+ * Loads a single file object from the database.
+ *
+ * @param $fid
+ *   A file ID.
+ *
+ * @return
+ *   An object representing the file, or FALSE if the file was not found.
+ *
+ * @see hook_file_load()
+ */
+function file_load($fid) {
+  $file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $fid));
+
+  if(!empty($file)) {
+    $result = array(&$file);
+    module_invoke_all('file_load', $result);
+    return $result[0];
+  }
+  return FALSE;
+}
+
+/**
+ * Saves a file object to the database. Backport from D7.
+ *
+ * If the $file->fid is not set a new record will be added.
+ *
+ * @param $file
+ *   A file object returned by file_load().
+ *
+ * @return
+ *   The updated file object.
+ *
+ * @see hook_file_insert()
+ * @see hook_file_update()
+ */
+function file_save(stdClass $file) {
+  $file->timestamp = REQUEST_TIME;
+  $file->filesize = filesize($file->filepath);
+
+  module_invoke_all('file_presave', $file);
+
+  if (empty($file->fid)) {
+    drupal_write_record('files', $file);
+    // Inform modules about the newly added file.
+    module_invoke_all('file_insert', $file);
+  }
+  else {
+    drupal_write_record('files', $file, 'fid');
+    // Inform modules that the file has been updated.
+    module_invoke_all('file_update', $file);
+  }
+
+  return $file;
 }
 
 /**
@@ -322,13 +399,13 @@ function file_copy(&$source, $dest = 0, $replace = FILE_EXISTS_RENAME) {
   }
 
   // If the destination file is not specified then use the filename of the source file.
-  $basename = $basename ? $basename : basename($source);
+  $basename = $basename ? $basename : drupal_basename($source);
   $dest = $directory .'/'. $basename;
 
   // Make sure source and destination filenames are not the same, makes no sense
   // to copy it if they are. In fact copying the file will most likely result in
   // a 0 byte file. Which is bad. Real bad.
-  if ($source != realpath($dest)) {
+  if ($source != realpath($dest) || $replace == FILE_EXISTS_RENAME) {
     if (!$dest = file_destination($dest, $replace)) {
       drupal_set_message(t('The selected file %file could not be copied, because a file by that name already exists in the destination.', array('%file' => $source)), 'error');
       return FALSE;
@@ -344,6 +421,9 @@ function file_copy(&$source, $dest = 0, $replace = FILE_EXISTS_RENAME) {
     // and give group write permissions so group members
     // can alter files uploaded by the webserver.
     @chmod($dest, 0664);
+  } else {
+    // Cannot copy the file into itself without rename it.
+    return FALSE;
   }
 
   if (isset($file) && is_object($file)) {
@@ -375,7 +455,7 @@ function file_destination($destination, $replace) {
   if (file_exists($destination)) {
     switch ($replace) {
       case FILE_EXISTS_RENAME:
-        $basename = basename($destination);
+        $basename = drupal_basename($destination);
         $directory = dirname($destination);
         $destination = file_create_filename($basename, $directory);
         break;
@@ -416,7 +496,8 @@ function file_destination($destination, $replace) {
 function file_move(&$source, $dest = 0, $replace = FILE_EXISTS_RENAME) {
   $path_original = is_object($source) ? $source->filepath : $source;
 
-  if (file_copy($source, $dest, $replace)) {
+  // Moving file at the same destination without renaming have no sense
+  if (($path_original != $dest || $replace == FILE_EXISTS_RENAME) && file_copy($source, $dest, $replace)) {
     $path_current = is_object($source) ? $source->filepath : $source;
 
     if ($path_original == $path_current || file_delete($path_original)) {
@@ -512,8 +593,20 @@ function file_unmunge_filename($filename) {
  * @param $directory string directory
  * @return
  */
-function file_create_filename($basename, $directory) {
-  $dest = $directory .'/'. $basename;
+function file_create_filename($basename, $directory = '') {
+  // Strip control characters (ASCII value < 32). Though these are allowed in
+  // some filesystems, not many applications handle them well.
+  $basename = preg_replace('/[\x00-\x1F]/u', '_', $basename);
+  if (substr(PHP_OS, 0, 3) == 'WIN') {
+    // These characters are not allowed in Windows filenames
+    $basename = str_replace(array(':', '*', '?', '"', '<', '>', '|'), '_', $basename);
+  }
+
+  if(empty($directory)) {
+    $dest = $basename;
+  } else {
+    $dest = $directory .'/'. $basename;
+  }
 
   if (file_exists($dest)) {
     // Destination file already exists, generate an alternative.
@@ -542,9 +635,23 @@ function file_create_filename($basename, $directory) {
  * @return TRUE for success, FALSE for failure.
  */
 function file_delete($path) {
-  if (is_file($path)) {
+  if(is_object($path) && is_file($path->filepath)) {
+    // D7 compatibility
+    $file = $path;
+    $path = $file->filepath;
+    // Let other modules clean up any references to the deleted file.
+    module_invoke_all('file_delete', $file);
+
+    // Make sure the file is deleted before removing its row from the
+    // database, so UIs can still find the file in the database.
+    if (unlink($file->filepath)) {
+      return (bool)db_query("DELETE FROM {files} WHERE fid = %d", $file->fid);
+    }
+  } else if (is_file($path)) {
     return unlink($path);
   }
+
+  return FALSE;
 }
 
 /**
@@ -554,11 +661,11 @@ function file_delete($path) {
  *   An optional user id. A NULL value returns the total space used
  *   by all files.
  */
-function file_space_used($uid = NULL) {
+function file_space_used($uid = NULL, $status = FILE_STATUS_PERMANENT) {
   if (isset($uid)) {
-    return (int) db_result(db_query('SELECT SUM(filesize) FROM {files} WHERE uid = %d', $uid));
+    return (int) db_result(db_query('SELECT SUM(filesize) FROM {files} WHERE uid = %d AND status = %d', $uid, $status));
   }
-  return (int) db_result(db_query('SELECT SUM(filesize) FROM {files}'));
+  return (int) db_result(db_query('SELECT SUM(filesize) FROM {files} WHERE status = %d', $status));
 }
 
 /**
@@ -595,13 +702,15 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
   global $user;
   static $upload_cache;
 
-  // Add in our check of the the file name length.
-  $validators['file_validate_name_length'] = array();
-
   // Return cached objects without processing since the file will have
   // already been processed and the paths in _FILES will be invalid.
   if (isset($upload_cache[$source])) {
     return $upload_cache[$source];
+  }
+
+  // Make sure there's an upload to process.
+  if (empty($_FILES['files']['name'][$source])) {
+    return NULL;
   }
 
   // If a file was uploaded, process it.
@@ -616,17 +725,17 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
       case UPLOAD_ERR_INI_SIZE:
       case UPLOAD_ERR_FORM_SIZE:
         drupal_set_message(t('The file %file could not be saved, because it exceeds %maxsize, the maximum allowed size for uploads.', array('%file' => $source, '%maxsize' => format_size(file_upload_max_size()))), 'error');
-        return 0;
+        return FALSE;
 
       case UPLOAD_ERR_PARTIAL:
       case UPLOAD_ERR_NO_FILE:
         drupal_set_message(t('The file %file could not be saved, because the upload did not complete.', array('%file' => $source)), 'error');
-        return 0;
+        return FALSE;
 
         // Unknown error
       default:
         drupal_set_message(t('The file %file could not be saved. An unknown error has occurred.', array('%file' => $source)), 'error');
-        return 0;
+        return FALSE;
     }
 
     // Build the list of non-munged extensions.
@@ -637,9 +746,14 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
       variable_get('upload_extensions_default', 'jpg jpeg gif png txt html doc xls pdf ppt pps odt ods odp'));
     }
 
+    // If extensions if not provided user can upload one of the default extensions
+    if(isset($validators['file_validate_extensions']) && empty($validators['file_validate_extensions'][0])) {
+      $validators['file_validate_extensions'][0] = $extensions;
+    }
+
     // Begin building file object.
     $file = new stdClass();
-    $file->filename = file_munge_filename(trim(basename($_FILES['files']['name'][$source]), '.'), $extensions);
+    $file->filename = file_munge_filename(trim(drupal_basename($_FILES['files']['name'][$source]), '.'), $extensions);
     $file->filepath = $_FILES['files']['tmp_name'][$source];
     $file->filemime = file_get_mimetype($file->filename);
 
@@ -651,16 +765,14 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
 
     $file->source = $source;
     $file->destination = file_destination(file_create_path($dest .'/'. $file->filename), $replace);
-    $file->filesize = $_FILES['files']['size'][$source];
-
-    // Call the validation functions.
-    $errors = array();
-    foreach ($validators as $function => $args) {
-      array_unshift($args, $file);
-      // Make sure $file is passed around by reference.
-      $args[0] = &$file;
-      $errors = array_merge($errors, call_user_func_array($function, $args));
+    // If file_destination() returns FALSE then $replace == FILE_EXISTS_ERROR and
+    // there's an existing file so we need to bail.
+    if ($file->destination === FALSE) {
+      drupal_set_message(t('The file %source could not be uploaded because a file by that name already exists in the destination %directory.', array('%source' => $source, '%directory' => $dest)), 'error');
+      return FALSE;
     }
+
+    $file->filesize = $_FILES['files']['size'][$source];
 
     // Rename potentially executable files, to help prevent exploits.
     if (preg_match('/\.(php|pl|py|cgi|asp|js)$/i', $file->filename) && (substr($file->filename, -4) != '.txt')) {
@@ -671,8 +783,16 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
       // convert to example.php_.txt, then create the correct destination.
       $file->filename = file_munge_filename($file->filename, $extensions);
       $file->destination = file_destination(file_create_path($dest .'/'. $file->filename), $replace);
+      if (!empty($extensions)) {
+        $validators['file_validate_extensions'][0] .= ' txt';
+      }
     }
 
+    // Add in our check of the the file name length.
+    $validators['file_validate_name_length'] = array();
+
+    // Call the validation functions specified by this function's caller.
+    $errors = file_validate($file, $validators);
 
     // Check for validation errors.
     if (!empty($errors)) {
@@ -684,29 +804,67 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
         $message .= ' '. array_pop($errors);
       }
       form_set_error($source, $message);
-      return 0;
+      return FALSE;
     }
 
     // Move uploaded files from PHP's upload_tmp_dir to Drupal's temporary directory.
     // This overcomes open_basedir restrictions for future file operations.
     $file->filepath = $file->destination;
-    if (!move_uploaded_file($_FILES['files']['tmp_name'][$source], $file->filepath)) {
+    if (!@move_uploaded_file($_FILES['files']['tmp_name'][$source], $file->filepath)) {
       form_set_error($source, t('File upload error. Could not move uploaded file.'));
       watchdog('file', 'Upload error. Could not move uploaded file %file to destination %destination.', array('%file' => $file->filename, '%destination' => $file->filepath));
-      return 0;
+      return FALSE;
     }
 
     // If we made it this far it's safe to record this file in the database.
     $file->uid = $user->uid;
     $file->status = FILE_STATUS_TEMPORARY;
     $file->timestamp = time();
-    drupal_write_record('files', $file);
+
+    file_save($file);
 
     // Add file to the cache.
     $upload_cache[$source] = $file;
     return $file;
   }
-  return 0;
+  return FALSE;
+}
+
+/**
+ * Checks that a file meets the criteria specified by the validators.
+ * Backport from D7.
+ *
+ * After executing the validator callbacks specified hook_file_validate() will
+ * also be called to allow other modules to report errors about the file.
+ *
+ * @param $file
+ *   A Drupal file object.
+ * @param $validators
+ *   An optional, associative array of callback functions used to validate the
+ *   file. The keys are function names and the values arrays of callback
+ *   parameters which will be passed in after the file object. The
+ *   functions should return an array of error messages; an empty array
+ *   indicates that the file passed validation. The functions will be called in
+ *   the order specified.
+ *
+ * @return
+ *   An array containing validation error messages.
+ *
+ * @see hook_file_validate()
+ */
+function file_validate(stdClass &$file, $validators = array()) {
+  // Call the validation functions specified by this function's caller.
+  $errors = array();
+  foreach ($validators as $function => $args) {
+    if (function_exists($function)) {
+      array_unshift($args, $file);
+      $args[0] = &$file;
+      $errors = array_merge($errors, call_user_func_array($function, $args));
+    }
+  }
+
+  // Let other modules perform validation on the new file.
+  return array_merge($errors, module_invoke_all('file_validate', $file));
 }
 
 /**
@@ -717,18 +875,20 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
  * @return
  *   An array. If the file name is too long, it will contain an error message.
  */
-function file_validate_name_length($file) {
+function file_validate_name_length(stdClass $file) {
   $errors = array();
 
-  if (strlen($file->filename) > 255) {
-    $errors[] = t('Its name exceeds the 255 characters limit. Please rename the file and try again.');
+  if (empty($file->filename)) {
+    $errors[] = t("The file's name is empty. Please give a name to the file.");
+  }
+  if (strlen($file->filename) > 240) {
+    $errors[] = t("The file's name exceeds the 240 characters limit. Please rename the file and try again.");
   }
   return $errors;
 }
 
 /**
- * Check that the filename ends with an allowed extension. This check is not
- * enforced for the user #1.
+ * Checks that the filename ends with an allowed extension.
  *
  * @param $file
  *   A Drupal file object.
@@ -740,17 +900,12 @@ function file_validate_name_length($file) {
  *   An array. If the file extension is not allowed, it will contain an error
  *   message.
  */
-function file_validate_extensions($file, $extensions) {
-  global $user;
-
+function file_validate_extensions($file, $extensions = '') {
   $errors = array();
 
-  // Bypass validation for uid  = 1.
-  if ($user->uid != 1) {
-    $regex = '/\.('. @ereg_replace(' +', '|', preg_quote($extensions)) .')$/i';
-    if (!preg_match($regex, $file->filename)) {
-      $errors[] = t('Only files with the following extensions are allowed: %files-allowed.', array('%files-allowed' => $extensions));
-    }
+  $regex = '/\.(' . preg_replace('/ +/', '|', preg_quote($extensions)) . ')$/i';
+  if (!preg_match($regex, $file->filename)) {
+    $errors[] = t('Only files with the following extensions are allowed: %files-allowed.', array('%files-allowed' => $extensions));
   }
   return $errors;
 }
@@ -770,21 +925,17 @@ function file_validate_extensions($file, $extensions) {
  * @return
  *   An array. If the file size exceeds limits, it will contain an error message.
  */
-function file_validate_size($file, $file_limit = 0, $user_limit = 0) {
+function file_validate_size(stdClass $file, $file_limit = 0, $user_limit = 0) {
   global $user;
-
   $errors = array();
 
-  // Bypass validation for uid  = 1.
-  if ($user->uid != 1) {
-    if ($file_limit && $file->filesize > $file_limit) {
-      $errors[] = t('The file is %filesize exceeding the maximum file size of %maxsize.', array('%filesize' => format_size($file->filesize), '%maxsize' => format_size($file_limit)));
-    }
+  if ($file_limit && $file->filesize > $file_limit) {
+    $errors[] = t('The file is %filesize exceeding the maximum file size of %maxsize.', array('%filesize' => format_size($file->filesize), '%maxsize' => format_size($file_limit)));
+  }
 
-    // Save a query by only calling file_space_used() when a limit is provided.
-    if ($user_limit && (file_space_used($user->uid) + $file->filesize) > $user_limit) {
-      $errors[] = t('The file is %filesize which would exceed your disk quota of %quota.', array('%filesize' => format_size($file->filesize), '%quota' => format_size($user_limit)));
-    }
+  // Save a query by only calling file_space_used() when a limit is provided.
+  if ($user_limit && (file_space_used($user->uid) + $file->filesize) > $user_limit) {
+    $errors[] = t('The file is %filesize which would exceed your disk quota of %quota.', array('%filesize' => format_size($file->filesize), '%quota' => format_size($user_limit)));
   }
   return $errors;
 }
@@ -874,7 +1025,11 @@ function file_validate_image_resolution(&$file, $maximum_dimensions = 0, $minimu
  *
  * @return A string containing the resulting filename or 0 on error
  */
-function file_save_data($data, $dest, $replace = FILE_EXISTS_RENAME) {
+function file_save_data($data, $dest = NULL, $replace = FILE_EXISTS_RENAME) {
+  if (empty($dest)) {
+    $dest = file_directory_path();
+  }
+
   $temp = file_directory_temp();
   // On Windows, tempnam() requires an absolute path, so we use realpath().
   $file = tempnam(realpath($temp), 'file');
@@ -1038,7 +1193,8 @@ function file_download_access($filepath) {
 }
 
 /**
- * Finds all files that match a given mask in a given directory. Backport from D6
+ * Finds all files that match a given mask in a given directory. 
+ * Backport from D7.
  *
  * Directories and files beginning with a period are excluded; this
  * prevents hidden files and directories (such as SVN working directories)
@@ -1077,11 +1233,11 @@ function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
     'nomask' => '/(\.\.?|CVS)$/',
     'callback' => 0,
     'recurse' => TRUE,
-    'key' => 'uri',
+    'key' => 'filename',
     'min_depth' => 0,
   );
 
-  $options['key'] = in_array($options['key'], array('uri', 'filename', 'name')) ? $options['key'] : 'uri';
+  $options['key'] = in_array($options['key'], array('filename', 'basename', 'name')) ? $options['key'] : 'filename';
   $files = array();
   if (is_dir($dir) && $handle = opendir($dir)) {
     while (FALSE !== ($filename = readdir($handle))) {
@@ -1102,7 +1258,6 @@ function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
           // Always use this match over anything already set in $files with the
           // same $$options['key'].
           $file = new stdClass();
-          $file->uri = $uri;
           $file->filename = $uri;
           $file->basename = $filename;
           $file->name = pathinfo($filename, PATHINFO_FILENAME);
@@ -1129,7 +1284,7 @@ function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
 function file_directory_temp() {
   $temporary_directory = variable_get('file_directory_temp', NULL);
 
-  if (is_null($temporary_directory)) {
+  if (empty($temporary_directory)) {
     $directories = array();
 
     // Has PHP been set with an upload_tmp_dir?
@@ -1202,364 +1357,58 @@ function file_upload_max_size() {
  */
 function file_get_mimetype($filename, $mapping = NULL) {
   if (!is_array($mapping)) {
-    $mapping = variable_get('mime_extension_mapping', array(
-      'ez' => 'application/andrew-inset',
-      'atom' => 'application/atom',
-      'atomcat' => 'application/atomcat+xml',
-      'atomsrv' => 'application/atomserv+xml',
-      'cap|pcap' => 'application/cap',
-      'cu' => 'application/cu-seeme',
-      'tsp' => 'application/dsptype',
-      'spl' => 'application/x-futuresplash',
-      'hta' => 'application/hta',
-      'jar' => 'application/java-archive',
-      'ser' => 'application/java-serialized-object',
-      'class' => 'application/java-vm',
-      'hqx' => 'application/mac-binhex40',
-      'cpt' => 'image/x-corelphotopaint',
-      'nb' => 'application/mathematica',
-      'mdb' => 'application/msaccess',
-      'doc|dot' => 'application/msword',
-      'bin' => 'application/octet-stream',
-      'oda' => 'application/oda',
-      'ogg|ogx' => 'application/ogg',
-      'pdf' => 'application/pdf',
-      'key' => 'application/pgp-keys',
-      'pgp' => 'application/pgp-signature',
-      'prf' => 'application/pics-rules',
-      'ps|ai|eps' => 'application/postscript',
-      'rar' => 'application/rar',
-      'rdf' => 'application/rdf+xml',
-      'rss' => 'application/rss+xml',
-      'rtf' => 'application/rtf',
-      'smi|smil' => 'application/smil',
-      'wpd' => 'application/wordperfect',
-      'wp5' => 'application/wordperfect5.1',
-      'xhtml|xht' => 'application/xhtml+xml',
-      'xml|xsl' => 'application/xml',
-      'zip' => 'application/zip',
-      'cdy' => 'application/vnd.cinderella',
-      'kml' => 'application/vnd.google-earth.kml+xml',
-      'kmz' => 'application/vnd.google-earth.kmz',
-      'xul' => 'application/vnd.mozilla.xul+xml',
-      'xls|xlb|xlt' => 'application/vnd.ms-excel',
-      'cat' => 'application/vnd.ms-pki.seccat',
-      'stl' => 'application/vnd.ms-pki.stl',
-      'ppt|pps' => 'application/vnd.ms-powerpoint',
-      'odc' => 'application/vnd.oasis.opendocument.chart',
-      'odb' => 'application/vnd.oasis.opendocument.database',
-      'odf' => 'application/vnd.oasis.opendocument.formula',
-      'odg' => 'application/vnd.oasis.opendocument.graphics',
-      'otg' => 'application/vnd.oasis.opendocument.graphics-template',
-      'odi' => 'application/vnd.oasis.opendocument.image',
-      'odp' => 'application/vnd.oasis.opendocument.presentation',
-      'otp' => 'application/vnd.oasis.opendocument.presentation-template',
-      'ods' => 'application/vnd.oasis.opendocument.spreadsheet',
-      'ots' => 'application/vnd.oasis.opendocument.spreadsheet-template',
-      'odt' => 'application/vnd.oasis.opendocument.text',
-      'odm' => 'application/vnd.oasis.opendocument.text-master',
-      'ott' => 'application/vnd.oasis.opendocument.text-template',
-      'oth' => 'application/vnd.oasis.opendocument.text-web',
-      'docm' => 'application/vnd.ms-word.document.macroEnabled.12',
-      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'dotm' => 'application/vnd.ms-word.template.macroEnabled.12',
-      'dotx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
-      'potm' => 'application/vnd.ms-powerpoint.template.macroEnabled.12',
-      'potx' => 'application/vnd.openxmlformats-officedocument.presentationml.template',
-      'ppam' => 'application/vnd.ms-powerpoint.addin.macroEnabled.12',
-      'ppsm' => 'application/vnd.ms-powerpoint.slideshow.macroEnabled.12',
-      'ppsx' => 'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
-      'pptm' => 'application/vnd.ms-powerpoint.presentation.macroEnabled.12',
-      'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'xlam' => 'application/vnd.ms-excel.addin.macroEnabled.12',
-      'xlsb' => 'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
-      'xlsm' => 'application/vnd.ms-excel.sheet.macroEnabled.12',
-      'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'xltm' => 'application/vnd.ms-excel.template.macroEnabled.12',
-      'xltx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.template',
-      'cod' => 'application/vnd.rim.cod',
-      'mmf' => 'application/vnd.smaf',
-      'sdc' => 'application/vnd.stardivision.calc',
-      'sds' => 'application/vnd.stardivision.chart',
-      'sda' => 'application/vnd.stardivision.draw',
-      'sdd' => 'application/vnd.stardivision.impress',
-      'sdf' => 'application/vnd.stardivision.math',
-      'sdw' => 'application/vnd.stardivision.writer',
-      'sgl' => 'application/vnd.stardivision.writer-global',
-      'sxc' => 'application/vnd.sun.xml.calc',
-      'stc' => 'application/vnd.sun.xml.calc.template',
-      'sxd' => 'application/vnd.sun.xml.draw',
-      'std' => 'application/vnd.sun.xml.draw.template',
-      'sxi' => 'application/vnd.sun.xml.impress',
-      'sti' => 'application/vnd.sun.xml.impress.template',
-      'sxm' => 'application/vnd.sun.xml.math',
-      'sxw' => 'application/vnd.sun.xml.writer',
-      'sxg' => 'application/vnd.sun.xml.writer.global',
-      'stw' => 'application/vnd.sun.xml.writer.template',
-      'sis' => 'application/vnd.symbian.install',
-      'vsd' => 'application/vnd.visio',
-      'wbxml' => 'application/vnd.wap.wbxml',
-      'wmlc' => 'application/vnd.wap.wmlc',
-      'wmlsc' => 'application/vnd.wap.wmlscriptc',
-      'wk' => 'application/x-123',
-      '7z' => 'application/x-7z-compressed',
-      'abw' => 'application/x-abiword',
-      'dmg' => 'application/x-apple-diskimage',
-      'bcpio' => 'application/x-bcpio',
-      'torrent' => 'application/x-bittorrent',
-      'cab' => 'application/x-cab',
-      'cbr' => 'application/x-cbr',
-      'cbz' => 'application/x-cbz',
-      'cdf' => 'application/x-cdf',
-      'vcd' => 'application/x-cdlink',
-      'pgn' => 'application/x-chess-pgn',
-      'cpio' => 'application/x-cpio',
-      'csh' => 'text/x-csh',
-      'deb|udeb' => 'application/x-debian-package',
-      'dcr|dir|dxr' => 'application/x-director',
-      'dms' => 'application/x-dms',
-      'wad' => 'application/x-doom',
-      'dvi' => 'application/x-dvi',
-      'rhtml' => 'application/x-httpd-eruby',
-      'flac' => 'application/x-flac',
-      'pfa|pfb|gsf|pcf|pcf.Z' => 'application/x-font',
-      'mm' => 'application/x-freemind',
-      'gnumeric' => 'application/x-gnumeric',
-      'sgf' => 'application/x-go-sgf',
-      'gcf' => 'application/x-graphing-calculator',
-      'gtar|tgz|taz' => 'application/x-gtar',
-      'hdf' => 'application/x-hdf',
-      'phtml|pht|php' => 'application/x-httpd-php',
-      'phps' => 'application/x-httpd-php-source',
-      'php3' => 'application/x-httpd-php3',
-      'php3p' => 'application/x-httpd-php3-preprocessed',
-      'php4' => 'application/x-httpd-php4',
-      'ica' => 'application/x-ica',
-      'ins|isp' => 'application/x-internet-signup',
-      'iii' => 'application/x-iphone',
-      'iso' => 'application/x-iso9660-image',
-      'jnlp' => 'application/x-java-jnlp-file',
-      'js' => 'application/x-javascript',
-      'jmz' => 'application/x-jmol',
-      'chrt' => 'application/x-kchart',
-      'kil' => 'application/x-killustrator',
-      'skp|skd|skt|skm' => 'application/x-koan',
-      'kpr|kpt' => 'application/x-kpresenter',
-      'ksp' => 'application/x-kspread',
-      'kwd|kwt' => 'application/x-kword',
-      'latex' => 'application/x-latex',
-      'lha' => 'application/x-lha',
-      'lyx' => 'application/x-lyx',
-      'lzh' => 'application/x-lzh',
-      'lzx' => 'application/x-lzx',
-      'frm|maker|frame|fm|fb|book|fbdoc' => 'application/x-maker',
-      'mif' => 'application/x-mif',
-      'wmd' => 'application/x-ms-wmd',
-      'wmz' => 'application/x-ms-wmz',
-      'com|exe|bat|dll' => 'application/x-msdos-program',
-      'msi' => 'application/x-msi',
-      'nc' => 'application/x-netcdf',
-      'pac' => 'application/x-ns-proxy-autoconfig',
-      'nwc' => 'application/x-nwc',
-      'o' => 'application/x-object',
-      'oza' => 'application/x-oz-application',
-      'p7r' => 'application/x-pkcs7-certreqresp',
-      'crl' => 'application/x-pkcs7-crl',
-      'pyc|pyo' => 'application/x-python-code',
-      'qtl' => 'application/x-quicktimeplayer',
-      'rpm' => 'application/x-redhat-package-manager',
-      'sh' => 'text/x-sh',
-      'shar' => 'application/x-shar',
-      'swf|swfl' => 'application/x-shockwave-flash',
-      'sit|sitx' => 'application/x-stuffit',
-      'sv4cpio' => 'application/x-sv4cpio',
-      'sv4crc' => 'application/x-sv4crc',
-      'tar' => 'application/x-tar',
-      'tcl' => 'application/x-tcl',
-      'gf' => 'application/x-tex-gf',
-      'pk' => 'application/x-tex-pk',
-      'texinfo|texi' => 'application/x-texinfo',
-      '~|%|bak|old|sik' => 'application/x-trash',
-      't|tr|roff' => 'application/x-troff',
-      'man' => 'application/x-troff-man',
-      'me' => 'application/x-troff-me',
-      'ms' => 'application/x-troff-ms',
-      'ustar' => 'application/x-ustar',
-      'src' => 'application/x-wais-source',
-      'wz' => 'application/x-wingz',
-      'crt' => 'application/x-x509-ca-cert',
-      'xcf' => 'application/x-xcf',
-      'fig' => 'application/x-xfig',
-      'xpi' => 'application/x-xpinstall',
-      'au|snd' => 'audio/basic',
-      'mid|midi|kar' => 'audio/midi',
-      'mpga|mpega|mp2|mp3|m4a' => 'audio/mpeg',
-      'f4a|f4b' => 'audio/mp4',
-      'm3u' => 'audio/x-mpegurl',
-      'oga|spx' => 'audio/ogg',
-      'sid' => 'audio/prs.sid',
-      'aif|aiff|aifc' => 'audio/x-aiff',
-      'gsm' => 'audio/x-gsm',
-      'wma' => 'audio/x-ms-wma',
-      'wax' => 'audio/x-ms-wax',
-      'ra|rm|ram' => 'audio/x-pn-realaudio',
-      'ra' => 'audio/x-realaudio',
-      'pls' => 'audio/x-scpls',
-      'sd2' => 'audio/x-sd2',
-      'wav' => 'audio/x-wav',
-      'alc' => 'chemical/x-alchemy',
-      'cac|cache' => 'chemical/x-cache',
-      'csf' => 'chemical/x-cache-csf',
-      'cbin|cascii|ctab' => 'chemical/x-cactvs-binary',
-      'cdx' => 'chemical/x-cdx',
-      'cer' => 'chemical/x-cerius',
-      'c3d' => 'chemical/x-chem3d',
-      'chm' => 'chemical/x-chemdraw',
-      'cif' => 'chemical/x-cif',
-      'cmdf' => 'chemical/x-cmdf',
-      'cml' => 'chemical/x-cml',
-      'cpa' => 'chemical/x-compass',
-      'bsd' => 'chemical/x-crossfire',
-      'csml|csm' => 'chemical/x-csml',
-      'ctx' => 'chemical/x-ctx',
-      'cxf|cef' => 'chemical/x-cxf',
-      'emb|embl' => 'chemical/x-embl-dl-nucleotide',
-      'spc' => 'chemical/x-galactic-spc',
-      'inp|gam|gamin' => 'chemical/x-gamess-input',
-      'fch|fchk' => 'chemical/x-gaussian-checkpoint',
-      'cub' => 'chemical/x-gaussian-cube',
-      'gau|gjc|gjf' => 'chemical/x-gaussian-input',
-      'gal' => 'chemical/x-gaussian-log',
-      'gcg' => 'chemical/x-gcg8-sequence',
-      'gen' => 'chemical/x-genbank',
-      'hin' => 'chemical/x-hin',
-      'istr|ist' => 'chemical/x-isostar',
-      'jdx|dx' => 'chemical/x-jcamp-dx',
-      'kin' => 'chemical/x-kinemage',
-      'mcm' => 'chemical/x-macmolecule',
-      'mmd|mmod' => 'chemical/x-macromodel-input',
-      'mol' => 'chemical/x-mdl-molfile',
-      'rd' => 'chemical/x-mdl-rdfile',
-      'rxn' => 'chemical/x-mdl-rxnfile',
-      'sd|sdf' => 'chemical/x-mdl-sdfile',
-      'tgf' => 'chemical/x-mdl-tgf',
-      'mcif' => 'chemical/x-mmcif',
-      'mol2' => 'chemical/x-mol2',
-      'b' => 'chemical/x-molconn-Z',
-      'gpt' => 'chemical/x-mopac-graph',
-      'mop|mopcrt|mpc|dat|zmt' => 'chemical/x-mopac-input',
-      'moo' => 'chemical/x-mopac-out',
-      'mvb' => 'chemical/x-mopac-vib',
-      'asn' => 'chemical/x-ncbi-asn1-spec',
-      'prt|ent' => 'chemical/x-ncbi-asn1-ascii',
-      'val|aso' => 'chemical/x-ncbi-asn1-binary',
-      'pdb|ent' => 'chemical/x-pdb',
-      'ros' => 'chemical/x-rosdal',
-      'sw' => 'chemical/x-swissprot',
-      'vms' => 'chemical/x-vamas-iso14976',
-      'vmd' => 'chemical/x-vmd',
-      'xtel' => 'chemical/x-xtel',
-      'xyz' => 'chemical/x-xyz',
-      'gif' => 'image/gif',
-      'ief' => 'image/ief',
-      'jpeg|jpg|jpe' => 'image/jpeg',
-      'pcx' => 'image/pcx',
-      'png' => 'image/png',
-      'svg|svgz' => 'image/svg+xml',
-      'tiff|tif' => 'image/tiff',
-      'djvu|djv' => 'image/vnd.djvu',
-      'wbmp' => 'image/vnd.wap.wbmp',
-      'ras' => 'image/x-cmu-raster',
-      'cdr' => 'image/x-coreldraw',
-      'pat' => 'image/x-coreldrawpattern',
-      'cdt' => 'image/x-coreldrawtemplate',
-      'ico' => 'image/x-icon',
-      'art' => 'image/x-jg',
-      'jng' => 'image/x-jng',
-      'bmp' => 'image/x-ms-bmp',
-      'psd' => 'image/x-photoshop',
-      'pnm' => 'image/x-portable-anymap',
-      'pbm' => 'image/x-portable-bitmap',
-      'pgm' => 'image/x-portable-graymap',
-      'ppm' => 'image/x-portable-pixmap',
-      'rgb' => 'image/x-rgb',
-      'xbm' => 'image/x-xbitmap',
-      'xpm' => 'image/x-xpixmap',
-      'xwd' => 'image/x-xwindowdump',
-      'eml' => 'message/rfc822',
-      'igs|iges' => 'model/iges',
-      'msh|mesh|silo' => 'model/mesh',
-      'wrl|vrml' => 'model/vrml',
-      'ics|icz' => 'text/calendar',
-      'css' => 'text/css',
-      'csv' => 'text/csv',
-      '323' => 'text/h323',
-      'html|htm|shtml' => 'text/html',
-      'uls' => 'text/iuls',
-      'mml' => 'text/mathml',
-      'asc|txt|text|pot' => 'text/plain',
-      'rtx' => 'text/richtext',
-      'sct|wsc' => 'text/scriptlet',
-      'tm|ts' => 'text/texmacs',
-      'tsv' => 'text/tab-separated-values',
-      'jad' => 'text/vnd.sun.j2me.app-descriptor',
-      'wml' => 'text/vnd.wap.wml',
-      'wmls' => 'text/vnd.wap.wmlscript',
-      'bib' => 'text/x-bibtex',
-      'boo' => 'text/x-boo',
-      'h++|hpp|hxx|hh' => 'text/x-c++hdr',
-      'c++|cpp|cxx|cc' => 'text/x-c++src',
-      'h' => 'text/x-chdr',
-      'htc' => 'text/x-component',
-      'c' => 'text/x-csrc',
-      'd' => 'text/x-dsrc',
-      'diff|patch' => 'text/x-diff',
-      'hs' => 'text/x-haskell',
-      'java' => 'text/x-java',
-      'lhs' => 'text/x-literate-haskell',
-      'moc' => 'text/x-moc',
-      'p|pas' => 'text/x-pascal',
-      'gcd' => 'text/x-pcs-gcd',
-      'pl|pm' => 'text/x-perl',
-      'py' => 'text/x-python',
-      'etx' => 'text/x-setext',
-      'tcl|tk' => 'text/x-tcl',
-      'tex|ltx|sty|cls' => 'text/x-tex',
-      'vcs' => 'text/x-vcalendar',
-      'vcf' => 'text/x-vcard',
-      '3gp' => 'video/3gpp',
-      'dl' => 'video/dl',
-      'dif|dv' => 'video/dv',
-      'fli' => 'video/fli',
-      'gl' => 'video/gl',
-      'mpeg|mpg|mpe' => 'video/mpeg',
-      'mp4|f4v|f4p' => 'video/mp4',
-      'flv' => 'video/x-flv',
-      'ogv' => 'video/ogg',
-      'qt|mov' => 'video/quicktime',
-      'mxu' => 'video/vnd.mpegurl',
-      'lsf|lsx' => 'video/x-la-asf',
-      'mng' => 'video/x-mng',
-      'asf|asx' => 'video/x-ms-asf',
-      'wm' => 'video/x-ms-wm',
-      'wmv' => 'video/x-ms-wmv',
-      'wmx' => 'video/x-ms-wmx',
-      'wvx' => 'video/x-ms-wvx',
-      'avi' => 'video/x-msvideo',
-      'movie' => 'video/x-sgi-movie',
-      'ice' => 'x-conference/x-cooltalk',
-      'sisx' => 'x-epoc/x-sisx-app',
-      'vrm|vrml|wrl' => 'x-world/x-vrml',
-      'xps' => 'application/vnd.ms-xpsdocument',
-    ));
+    include_once DRUPAL_ROOT . '/includes/file.mimetypes.inc';
+    $mapping = file_mimetype_mapping();
   }
-  foreach ($mapping as $ext_preg => $mime_match) {
-    if (preg_match('!\.('. $ext_preg .')$!i', $filename)) {
-      return $mime_match;
+
+  $extension = '';
+  $file_parts = explode('.', drupal_basename($filename));
+
+  // Remove the first part: a full filename should not match an extension.
+  array_shift($file_parts);
+
+  // Iterate over the file parts, trying to find a match.
+  // For my.awesome.image.jpeg, we try:
+  //   - jpeg
+  //   - image.jpeg, and
+  //   - awesome.image.jpeg
+  while ($additional_part = array_pop($file_parts)) {
+    $extension = strtolower($additional_part . ($extension ? '.' . $extension : ''));
+    if (isset($mapping['extensions'][$extension])) {
+      return $mapping['mimetypes'][$mapping['extensions'][$extension]];
     }
   }
 
   return 'application/octet-stream';
+}
+
+/**
+ * Gets the filename from a given path.
+ *
+ * PHP's basename() does not properly support streams or filenames beginning
+ * with a non-US-ASCII character.
+ *
+ * @see http://bugs.php.net/bug.php?id=37738
+ * @see basename()
+ *
+ * @ingroup php_wrappers
+ */
+function drupal_basename($uri, $suffix = NULL) {
+  $separators = '/';
+  if (DIRECTORY_SEPARATOR != '/') {
+    // For Windows OS add special separator.
+    $separators .= DIRECTORY_SEPARATOR;
+  }
+  // Remove right-most slashes when $uri points to directory.
+  $uri = rtrim($uri, $separators);
+  // Returns the trailing part of the $uri starting after one of the directory
+  // separators.
+  $filename = preg_match('@[^' . preg_quote($separators, '@') . ']+$@', $uri, $matches) ? $matches[0] : '';
+  // Cuts off a suffix from the filename.
+  if ($suffix) {
+    $filename = preg_replace('@' . preg_quote($suffix, '@') . '$@', '', $filename);
+  }
+  return $filename;
 }
 
 /**

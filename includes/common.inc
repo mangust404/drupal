@@ -2624,6 +2624,7 @@ function drupal_group_css($css) {
     // part of that HTML tag.
     switch ($item['type']) {
       case 'file':
+      case 'module':
         // Group file items if their 'preprocess' flag is TRUE.
         // Help ensure maximum reuse of aggregate files by only grouping
         // together items that share the same 'group' value and 'every_page'
@@ -4636,7 +4637,7 @@ function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1)
     foreach (array_intersect_key($files_to_add, $files) as $file_key => $file) {
       // If it has no info file, then we just behave liberally and accept the
       // new resource on the list for merging.
-      if (file_exists($info_file = dirname($file->uri) . '/' . $file->name . '.info')) {
+      if (file_exists($info_file = dirname($file->filename) . '/' . $file->name . '.info')) {
         // Get the .info file for the module or theme this file belongs to.
         $info = drupal_parse_info_file($info_file);
 
@@ -4899,8 +4900,10 @@ function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL, &$con
     global $theme, $base_theme_info;
     if (isset($theme)) {
       $theme_keys = array();
-      foreach ($base_theme_info as $base) {
-        $theme_keys[] = $base->name;
+      if(isset($base_theme_info)) {
+        foreach ($base_theme_info as $base) {
+          $theme_keys[] = $base->name;
+        }
       }
       $theme_keys[] = $theme;
       foreach ($theme_keys as $theme_key) {
