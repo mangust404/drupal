@@ -1218,6 +1218,56 @@ function theme_placeholder($text) {
 }
 
 /**
+ * Enables a given list of themes.
+ *
+ * @param $theme_list
+ *   An array of theme names.
+ */
+function theme_enable($theme_list) {
+  drupal_clear_css_cache();
+
+  foreach ($theme_list as $key) {
+    db_query("UPDATE {system} SET status = 1 WHERE type = 'theme' AND name = '%s'", $key);
+  }
+
+  list_themes(TRUE);
+  menu_rebuild();
+  drupal_rebuild_theme_registry();
+
+  // Invoke hook_themes_enabled() after the themes have been enabled.
+  module_invoke_all('themes_enabled', $theme_list);
+}
+
+/**
+ * Disables a given list of themes.
+ *
+ * @param $theme_list
+ *   An array of theme names.
+ */
+function theme_disable($theme_list) {
+  // Don't disable the default theme.
+  if ($pos = array_search(variable_get('theme_default', 'garland'), $theme_list) !== FALSE) {
+    unset($theme_list[$pos]);
+    if (empty($theme_list)) {
+      return;
+    }
+  }
+
+  drupal_clear_css_cache();
+
+  foreach ($theme_list as $key) {
+    db_query("UPDATE {system} SET status = 0 WHERE type = 'theme' AND name = '%s'", $key);
+  }
+
+  list_themes(TRUE);
+  menu_rebuild();
+  drupal_rebuild_theme_registry();
+
+  // Invoke hook_themes_disabled after the themes have been disabled.
+  module_invoke_all('themes_disabled', $theme_list);
+}
+
+/**
  * Return a themed set of status and/or error messages. The messages are grouped
  * by type.
  *

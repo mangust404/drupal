@@ -304,6 +304,43 @@ function drupal_get_query_parameters(array $query = NULL, array $exclude = array
 }
 
 /**
+ * Parse an array into a valid urlencoded query string.
+ *
+ * @param $query
+ *   The array to be processed e.g. $_GET.
+ * @param $exclude
+ *   The array filled with keys to be excluded. Use parent[child] to exclude
+ *   nested items.
+ * @param $parent
+ *   Should not be passed, only used in recursive calls.
+ * @return
+ *   An urlencoded string which can be appended to/as the URL query string.
+ */
+function drupal_query_string_encode($query, $exclude = array(), $parent = '') {
+  $params = array();
+
+  foreach ($query as $key => $value) {
+    $key = rawurlencode($key);
+    if ($parent) {
+      $key = $parent .'['. $key .']';
+    }
+
+    if (in_array($key, $exclude)) {
+      continue;
+    }
+
+    if (is_array($value)) {
+      $params[] = drupal_query_string_encode($value, $exclude, $key);
+    }
+    else {
+      $params[] = $key .'='. rawurlencode($value);
+    }
+  }
+
+  return implode('&', $params);
+}
+
+/**
  * Parses an array into a valid, rawurlencoded query string. Backport from D7.
  *
  * This differs from http_build_query() as we need to rawurlencode() (instead of

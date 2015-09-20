@@ -1073,7 +1073,13 @@ function book_menu_subtree_data($item) {
         WHERE ". implode(' AND ', $match) ."
         ORDER BY p1 ASC, p2 ASC, p3 ASC, p4 ASC, p5 ASC, p6 ASC, p7 ASC, p8 ASC, p9 ASC";
 
-      $data['tree'] = menu_tree_data(db_query($sql, $args), array(), $item['depth']);
+      $result = db_query($sql, $args);
+      $links = array();
+      while($link = db_fetch_array($result)) {
+        $links[] = $link;
+      }
+
+      $data['tree'] = menu_tree_data($links, array(), $item['depth']);
       $data['node_links'] = array();
       menu_tree_collect_node_links($data['tree'], $data['node_links']);
       // Compute the real cid for book subtree data.

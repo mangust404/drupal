@@ -188,9 +188,39 @@ function menu_overview_title($menu) {
 
 /**
  * Load the data for a single custom menu.
+ *
+ * @param $menu_name
+ *   The unique name of a custom menu to load.
+ * @return
+ *   Array defining the custom menu, or FALSE if the menu doesn't exist.
  */
 function menu_load($menu_name) {
-  return db_fetch_array(db_query("SELECT * FROM {menu_custom} WHERE menu_name = '%s'", $menu_name));
+  $all_menus = menu_load_all();
+  return isset($all_menus[$menu_name]) ? $all_menus[$menu_name] : FALSE;
+}
+
+/**
+ * Load all custom menu data. Backport from D7.
+ *
+ * @return
+ *   Array of custom menu data.
+ */
+function menu_load_all() {
+  $custom_menus = &drupal_static(__FUNCTION__);
+  if (!isset($custom_menus)) {
+    if ($cached = cache_get('menu_custom', 'cache_menu')) {
+      $custom_menus = $cached->data;
+    }
+    else {
+      $custom_menus = array();
+      $result = db_query('SELECT * FROM {menu_custom}');
+      while ($item = db_fetch_array($result)) {
+        $custom_menus[$item['menu_name']] = $item;
+      }
+      cache_set('menu_custom', $custom_menus, 'cache_menu');
+    }
+  }
+  return $custom_menus;
 }
 
 /**
@@ -302,7 +332,7 @@ function menu_nodeapi(&$node, $op) {
         elseif (trim($item['link_title'])) {
           $item['link_title'] = trim($item['link_title']);
           $item['link_path'] = "node/$node->nid";
-          if (!$item['customized']) {
+          if (empty($item['customized'])) {
             $item['options']['attributes']['title'] = trim($node->title);
           }
           if (!menu_link_save($item)) {

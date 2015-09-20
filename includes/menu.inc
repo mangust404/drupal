@@ -146,6 +146,7 @@ define('MENU_FOUND', 1);
 define('MENU_NOT_FOUND', 2);
 define('MENU_ACCESS_DENIED', 3);
 define('MENU_SITE_OFFLINE', 4);
+define('MENU_SITE_ONLINE', 5);
 
 /**
  * @} End of "Menu status codes".
@@ -331,29 +332,44 @@ function menu_get_item($path = NULL, $router_item = NULL) {
 }
 
 /**
- * Execute the page callback associated with the current path
+ * Execute the page callback associated with the current path. 
+ * Partially backport from D7.
  */
 function menu_execute_active_handler($path = NULL) {
-  if (_menu_site_is_offline()) {
-    return MENU_SITE_OFFLINE;
-  }
-  // Rebuild if we know it's needed, or if the menu masks are missing which
-  // occurs rarely, likely due to a race condition of multiple rebuilds.
-  if (variable_get('menu_rebuild_needed', FALSE) || !variable_get('menu_masks', array())) {
-    menu_rebuild();
-  }
-  if ($router_item = menu_get_item($path)) {
-    if ($router_item['access']) {
-      if ($router_item['file']) {
-        require_once($router_item['file']);
+  // Check if site is offline.
+  $page_callback_result = _menu_site_is_offline() ? MENU_SITE_OFFLINE : MENU_SITE_ONLINE;
+  
+  // Allow other modules to change the site status but not the path because that
+  // would not change the global variable. hook_url_inbound_alter() can be used
+  // to change the path. Code later will not use the $read_only_path variable.
+  $read_only_path = !empty($path) ? $path : $_GET['q'];
+  drupal_alter('menu_site_status', $page_callback_result, $read_only_path);
+
+  // Only continue if the site status is not set.
+  if ($page_callback_result == MENU_SITE_ONLINE) {
+    // Rebuild if we know it's needed, or if the menu masks are missing which
+    // occurs rarely, likely due to a race condition of multiple rebuilds.
+    if (variable_get('menu_rebuild_needed', FALSE) || !variable_get('menu_masks', array())) {
+      menu_rebuild();
+    }
+
+    if ($router_item = menu_get_item($path)) {
+      if ($router_item['access']) {
+        if ($router_item['file']) {
+          require_once DRUPAL_ROOT . '/' . $router_item['file'];
+        }
+        $page_callback_result = call_user_func_array($router_item['page_callback'], $router_item['page_arguments']);
       }
-      return call_user_func_array($router_item['page_callback'], $router_item['page_arguments']);
+      else {
+        $page_callback_result = MENU_ACCESS_DENIED;
+      }
     }
     else {
-      return MENU_ACCESS_DENIED;
+      $page_callback_result = MENU_NOT_FOUND;
     }
   }
-  return MENU_NOT_FOUND;
+
+  return $page_callback_result;
 }
 
 /**
@@ -719,7 +735,7 @@ function menu_get_object($type = 'node', $position = 1, $path = NULL) {
  *   The rendered HTML of that menu on the current page.
  */
 function menu_tree($menu_name = 'navigation') {
-  static $menu_output = array();
+  $menu_output = &drupal_static(__FUNCTION__, array());
 
   if (!isset($menu_output[$menu_name])) {
     $tree = menu_tree_page_data($menu_name);
@@ -743,7 +759,7 @@ function menu_tree_output($tree) {
   // Pull out just the menu items we are going to render so that we
   // get an accurate count for the first/last classes.
   foreach ($tree as $data) {
-    if (!$data['link']['hidden']) {
+    if ($data['link']['access'] && !$data['link']['hidden']) {
       $items[] = $data;
     }
   }
@@ -757,7 +773,17 @@ function menu_tree_output($tree) {
     if ($i == $num_items - 1) {
       $extra_class[] = 'last';
     }
+
     $extra_class = implode(' ', $extra_class);
+
+    // Normally, l() compares the href of every link with $_GET['q'] and sets
+    // the active class accordingly. But local tasks do not appear in menu
+    // trees, so if the current path is a local task, and this link is its
+    // tab root, then we have to set the class manually.
+    if ($data['link']['in_active_trail'] && empty($data['below']) && $data['link']['href'] != $_GET['q']) {
+      $data['link']['localized_options']['attributes']['class'] = 'active';
+    }
+
     $link = theme('menu_item_link', $data['link']);
     if ($data['below']) {
       $output .= theme('menu_item', $link, $data['link']['has_children'], menu_tree_output($data['below']), $data['link']['in_active_trail'], $extra_class);
@@ -785,7 +811,7 @@ function menu_tree_output($tree) {
  *   An tree of menu links in an array, in the order they should be rendered.
  */
 function menu_tree_all_data($menu_name = 'navigation', $item = NULL) {
-  static $tree = array();
+  $tree = &drupal_static(__FUNCTION__, array());
 
   // Use $mlid as a flag for whether the data being loaded is for the whole tree.
   $mlid = isset($item['mlid']) ? $item['mlid'] : 0;
@@ -826,14 +852,19 @@ function menu_tree_all_data($menu_name = 'navigation', $item = NULL) {
         $parents = array();
       }
       array_unshift($args, $menu_name);
-      // Select the links from the table, and recursively build the tree.  We
-      // LEFT JOIN since there is no match in {menu_router} for an external
-      // link.
-      $data['tree'] = menu_tree_data(db_query("
+      // Select the links from the table. We LEFT JOIN since 
+      // there is no match in {menu_router} for an external link
+      $links_result = db_query("
         SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
         FROM {menu_links} ml LEFT JOIN {menu_router} m ON m.path = ml.router_path
         WHERE ml.menu_name = '%s'". $where ."
-        ORDER BY p1 ASC, p2 ASC, p3 ASC, p4 ASC, p5 ASC, p6 ASC, p7 ASC, p8 ASC, p9 ASC", $args), $parents);
+        ORDER BY p1 ASC, p2 ASC, p3 ASC, p4 ASC, p5 ASC, p6 ASC, p7 ASC, p8 ASC, p9 ASC", $args);
+      $links = array();
+      while($link = db_fetch_array($links_result)) {
+        $links[] = $link;
+      }
+      // And recursively build the tree.
+      $data['tree'] = menu_tree_data($links, $parents);
       $data['node_links'] = array();
       menu_tree_collect_node_links($data['tree'], $data['node_links']);
       // Cache the data, if it is not already in the cache.
@@ -868,7 +899,7 @@ function menu_tree_all_data($menu_name = 'navigation', $item = NULL) {
  *   same structure described for the top-level array.
  */
 function menu_tree_page_data($menu_name = 'navigation') {
-  static $tree = array();
+  $tree = &drupal_static(__FUNCTION__, array());
 
   // Load the menu item corresponding to the current page.
   if ($item = menu_get_item()) {
@@ -933,14 +964,19 @@ function menu_tree_page_data($menu_name = 'navigation') {
           $placeholders = '%d';
           $parents = array();
         }
-        // Select the links from the table, and recursively build the tree. We
-        // LEFT JOIN since there is no match in {menu_router} for an external
-        // link.
-        $data['tree'] = menu_tree_data(db_query("
+        // Select the links from the table. We LEFT JOIN since 
+        // there is no match in {menu_router} for an external link
+        $links_result = db_query("
           SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
           FROM {menu_links} ml LEFT JOIN {menu_router} m ON m.path = ml.router_path
           WHERE ml.menu_name = '%s' AND ml.plid IN (". $placeholders .")
-          ORDER BY p1 ASC, p2 ASC, p3 ASC, p4 ASC, p5 ASC, p6 ASC, p7 ASC, p8 ASC, p9 ASC", $args), $parents);
+          ORDER BY p1 ASC, p2 ASC, p3 ASC, p4 ASC, p5 ASC, p6 ASC, p7 ASC, p8 ASC, p9 ASC", $args);
+        $links = array();
+        while($link = db_fetch_array($links_result)) {
+          $links[] = $link;
+        }
+        // And recursively build the tree.
+        $data['tree'] = menu_tree_data($links, $parents);
         $data['node_links'] = array();
         menu_tree_collect_node_links($data['tree'], $data['node_links']);
         // Cache the data, if it is not already in the cache.
@@ -1044,8 +1080,13 @@ function _menu_tree_check_access(&$tree) {
 /**
  * Build the data representing a menu tree.
  *
- * @param $result
- *   The database result.
+ * @param $links
+ *   A flat array of menu links that are part of the menu. Each array element
+ *   is an associative array of information about the menu link, containing the
+ *   fields from the {menu_links} table, and optionally additional information
+ *   from the {menu_router} table, if the menu item appears in both tables.
+ *   This array must be ordered depth-first. See menu_tree_all_data() for a sample
+ *   query.
  * @param $parents
  *   An array of the plid values that represent the path from the current page
  *   to the root of the menu tree.
@@ -1054,8 +1095,8 @@ function _menu_tree_check_access(&$tree) {
  * @return
  *   See menu_tree_page_data for a description of the data structure.
  */
-function menu_tree_data($result = NULL, $parents = array(), $depth = 1) {
-  list(, $tree) = _menu_tree_data($result, $parents, $depth);
+function menu_tree_data($links = NULL, $parents = array(), $depth = 1) {
+  list(, $tree) = _menu_tree_data($links, $parents, $depth);
   return $tree;
 }
 
@@ -1066,17 +1107,17 @@ function menu_tree_data($result = NULL, $parents = array(), $depth = 1) {
  * the next menu item. So we are always rendering the element previously
  * processed not the current one.
  */
-function _menu_tree_data($result, $parents, $depth, $previous_element = '') {
+function _menu_tree_data(&$links, $parents, $depth, $previous_element = '') {
   $remnant = NULL;
   $tree = array();
-  while ($item = db_fetch_array($result)) {
+  while ($item = array_shift($links)) {
     // We need to determine if we're on the path to root so we can later build
     // the correct active trail and breadcrumb.
     $item['in_active_trail'] = in_array($item['mlid'], $parents);
     // The current item is the first in a new submenu.
     if ($item['depth'] > $depth) {
       // _menu_tree returns an item and the menu tree structure.
-      list($item, $below) = _menu_tree_data($result, $parents, $item['depth'], $item);
+      list($item, $below) = _menu_tree_data($links, $parents, $item['depth'], $item);
       if ($previous_element) {
         $tree[$previous_element['mlid']] = array(
           'link' => $previous_element,
@@ -1210,7 +1251,7 @@ function menu_get_active_help() {
  * Build a list of named menus.
  */
 function menu_get_names($reset = FALSE) {
-  static $names;
+  $names = &drupal_static(__FUNCTION__);
 
   if ($reset || empty($names)) {
     $names = array();
@@ -1313,10 +1354,10 @@ function menu_navigation_links($menu_name, $level = 0) {
  *   a parent tab, if the current page is a default local task.
  */
 function menu_local_tasks($level = 0, $return_root = FALSE) {
-  static $tabs;
-  static $root_path;
+  $tabs = &drupal_static(__FUNCTION__);
+  $root_path = &drupal_static(__FUNCTION__ . ':root_path', '');
 
-  if (!isset($tabs)) {
+  if (empty($tabs)) {
     $tabs = array();
 
     $router_item = menu_get_item();
@@ -1503,6 +1544,9 @@ function menu_get_active_menu_name() {
  */
 function menu_set_active_item($path) {
   $_GET['q'] = $path;
+  // Since the active item has changed, the active menu trail may also be out
+  // of date.
+  drupal_static_reset('menu_set_active_trail');
 }
 
 /**
@@ -1528,7 +1572,7 @@ function menu_set_active_item($path) {
  *   saved as the static value, and returned.
  */
 function menu_set_active_trail($new_trail = NULL) {
-  static $trail;
+  $trail = &drupal_static(__FUNCTION__);
 
   if (isset($new_trail)) {
     $trail = $new_trail;
@@ -1662,16 +1706,19 @@ function menu_link_load($mlid) {
  * Clears the cached cached data for a single named menu.
  */
 function menu_cache_clear($menu_name = 'navigation') {
-  static $cache_cleared = array();
+  $cache_cleared = &drupal_static(__FUNCTION__, array());
 
   if (empty($cache_cleared[$menu_name])) {
-    cache_clear_all('links:'. $menu_name .':', 'cache_menu', TRUE);
+    cache_clear_all('links:' . $menu_name . ':', 'cache_menu', TRUE);
     $cache_cleared[$menu_name] = 1;
   }
   elseif ($cache_cleared[$menu_name] == 1) {
-    drupal_register_shutdown_function('cache_clear_all', 'links:'. $menu_name .':', 'cache_menu', TRUE);
+    drupal_register_shutdown_function('cache_clear_all', 'links:' . $menu_name . ':', 'cache_menu', TRUE);
     $cache_cleared[$menu_name] = 2;
   }
+
+  // Also clear the menu system static caches.
+  menu_reset_static_cache();
 }
 
 /**
@@ -1680,6 +1727,16 @@ function menu_cache_clear($menu_name = 'navigation') {
  */
 function menu_cache_clear_all() {
   cache_clear_all('*', 'cache_menu', TRUE);
+}
+
+/**
+ * Resets the menu system static cache.
+ * Backport from D7.
+ */
+function menu_reset_static_cache() {
+  drupal_static_reset('menu_tree');
+  drupal_static_reset('menu_tree_all_data');
+  drupal_static_reset('menu_tree_page_data');
 }
 
 /**
@@ -1926,10 +1983,15 @@ function menu_link_save(&$item) {
     $existing_item = db_fetch_array(db_query("SELECT * FROM {menu_links} WHERE mlid = %d", $item['mlid']));
   }
 
+  $parent = FALSE;
   if (isset($item['plid'])) {
     $parent = db_fetch_array(db_query("SELECT * FROM {menu_links} WHERE mlid = %d", $item['plid']));
   }
-  else {
+
+  if (!isset($item['plid']) || !$parent) {
+    // If it's a "database crash" we should find some parent
+    // for tests purposes at MenuLinksUnitTestCase->createLinkHierarchy()
+
     // Find the parent - it must be unique.
     $parent_path = $item['link_path'];
     $where = "WHERE link_path = '%s'";
@@ -2140,10 +2202,11 @@ function menu_link_maintain($module, $op, $link_path, $link_title) {
       return menu_link_save($menu_link);
       break;
     case 'update':
-      db_query("UPDATE {menu_links} SET link_title = '%s' WHERE link_path = '%s' AND customized = 0 AND module = '%s'", $link_title, $link_path, $module);
-      $result = db_query("SELECT menu_name FROM {menu_links} WHERE link_path = '%s' AND customized = 0 AND module = '%s'", $link_path, $module);
-      while ($item = db_fetch_array($result)) {
-        menu_cache_clear($item['menu_name']);
+      $result = db_query("SELECT * FROM {menu_links} WHERE link_path = '%s' AND customized = 0 AND module = '%s'", $link_path, $module);
+      while($link = db_fetch_array($result)) {
+        $link['link_title'] = $link_title;
+        $link['options'] = unserialize($link['options']);
+        menu_link_save($link);
       }
       break;
     case 'delete':
@@ -2395,11 +2458,14 @@ function _menu_router_build($callbacks) {
           if (!isset($item['page arguments']) && isset($parent['page arguments'])) {
             $item['page arguments'] = $parent['page arguments'];
           }
-          if (!isset($item['file']) && isset($parent['file'])) {
-            $item['file'] = $parent['file'];
-          }
           if (!isset($item['file path']) && isset($parent['file path'])) {
             $item['file path'] = $parent['file path'];
+          }
+          if (!isset($item['file']) && isset($parent['file'])) {
+            $item['file'] = $parent['file'];
+            if (empty($item['file path']) && isset($item['module']) && isset($parent['module']) && $item['module'] != $parent['module']) {
+              $item['file path'] = drupal_get_path('module', $parent['module']);
+            }
           }
         }
       }
