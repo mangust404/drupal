@@ -747,6 +747,11 @@ class DrupalWebTestCase extends DrupalTestCase {
   protected $session_id = NULL;
 
   /**
+   * Locale module is installed on current system.
+   */
+  protected $has_locale_module = NULL;
+
+  /**
    * Constructor for DrupalWebTestCase.
    */
   function __construct($test_id = NULL) {
@@ -1166,7 +1171,8 @@ class DrupalWebTestCase extends DrupalTestCase {
     $clean_url_original = variable_get('clean_url', 0);
 
     // Must reset locale here, since schema calls t(). (Drupal 6)
-    if (module_exists('locale')) {
+    $this->has_locale_module = module_exists('locale');
+    if ($this->has_locale_module) {
       $language = (object) array('language' => 'en', 'name' => 'English', 'native' => 'English', 'direction' => 0, 'enabled' => 1, 'plurals' => 0, 'formula' => '', 'domain' => '', 'prefix' => '', 'weight' => 0, 'javascript' => '');
       locale(NULL, NULL, TRUE);
     }
@@ -1398,9 +1404,14 @@ class DrupalWebTestCase extends DrupalTestCase {
       session_save_session(TRUE);
 
       // Bring back default language. (Drupal 6)
-      if (module_exists('locale')) {
+      if ($this->has_locale_module) {
         drupal_init_language();
         locale(NULL, NULL, TRUE);
+      } else if(function_exists('locale')) {
+        // If test module included locale module then set language to en
+        // so locale method will not be called.
+        global $language;
+        $language->language = 'en';
       }
 
       // Ensure that internal logged in variable and cURL options are reset.
@@ -3361,7 +3372,7 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
 }
 
 function simpletest_verbose_append($assertion) {
-  if (preg_match('/<a [^>]+>' . t('Verbose message') . '/', $assertion->message)) {
+  if (preg_match('/<a [^>]+>' . 'Verbose message' . '/', $assertion->message)) {
     // Don't include "Verbose message" in the verbose messages
     return;
   }

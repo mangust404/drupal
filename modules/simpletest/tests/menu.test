@@ -1135,7 +1135,7 @@ class MenuBreadcrumbTestCase extends MenuWebTestCase {
     $this->assertBreadcrumb('admin/content/types/add', $trail);
 
     // Verify Filter text format administration breadcrumbs.
-    $format = db_fetch_object(db_query("SELECT format, name FROM {filter_formats} OFFSET 0 LIMIT 1"));
+    $format = db_fetch_object(db_query_range("SELECT format, name FROM {filter_formats}", 0, 1));
     $format_id = $format->format;
     $trail = $config;
     $this->assertBreadcrumb('admin/settings/filters', $trail);

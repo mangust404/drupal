@@ -577,7 +577,7 @@ class FileSaveUploadTest extends FileHookTestCase {
     $this->assertTrue(count($image_files) > 0, 'Image files initialized');
     $this->image = current($image_files);
 
-    list(, $this->image_extension) = explode('.', $this->image->filename);
+    $this->image_extension = pathinfo($this->image->filename, PATHINFO_EXTENSION);
     $this->assertTrue(is_file($this->image->filename), "The image file we're going to upload exists.");
 
     $this->phpfile = current($this->drupalGetTestFiles('php'));
