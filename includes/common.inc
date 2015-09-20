@@ -4411,6 +4411,7 @@ function _drupal_bootstrap_full() {
     return;
   }
   $called = 1;
+  require_once './includes/path.inc';
   require_once './includes/theme.inc';
   require_once './includes/pager.inc';
   require_once './includes/menu.inc';
@@ -4439,12 +4440,16 @@ function _drupal_bootstrap_full() {
     ini_set('error_log', file_directory_path() . '/error.log');
   }
 
-// Load all enabled modules
+  // Load all enabled modules
   module_load_all();
   // Ensure mt_rand is reseeded, to prevent random values from one page load
   // being exploited to predict random values in subsequent page loads.
   $seed = unpack("L", drupal_random_bytes(4));
   mt_srand($seed[1]);
+
+  // Initialize $_GET['q'] prior to invoking hook_init().
+  drupal_init_path();
+
   // Let all modules take action before menu system handles the request
   // We do not want this while running update.php.
   if (!defined('MAINTENANCE_MODE') || MAINTENANCE_MODE != 'update') {

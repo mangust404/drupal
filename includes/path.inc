@@ -131,8 +131,20 @@ function drupal_get_normal_path($path, $path_language = '') {
     $result = $src;
   }
   if (function_exists('custom_url_rewrite_inbound')) {
+    // Old D6 way
+
     // Modules may alter the inbound request path by reference.
     custom_url_rewrite_inbound($result, $path, $path_language);
+  } else {
+    // D7 way by hook_url_inbound_alter()
+
+    // Allow other modules to alter the inbound URL. We cannot use drupal_alter()
+    // here because we need to run hook_url_inbound_alter() in the reverse order
+    // of hook_url_outbound_alter().
+    foreach (array_reverse(module_implements('url_inbound_alter')) as $module) {
+      $function = $module . '_url_inbound_alter';
+      $function($result, $path, $path_language);
+    }
   }
   return $result;
 }
@@ -267,8 +279,6 @@ function drupal_match_path($path, $patterns) {
  *
  * @return
  *   The current Drupal URL path.
- *
- * @see request_path()
  */
 function current_path() {
   return $_GET['q'];

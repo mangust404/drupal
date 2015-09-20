@@ -1695,12 +1695,6 @@ function _drupal_bootstrap($phase) {
       drupal_init_language();
       break;
 
-    case DRUPAL_BOOTSTRAP_PATH:
-      require_once './includes/path.inc';
-      // Initialize $_GET['q'] prior to loading modules and invoking hook_init().
-      drupal_init_path();
-      break;
-
     case DRUPAL_BOOTSTRAP_FULL:
       require_once './includes/common.inc';
       _drupal_bootstrap_full();

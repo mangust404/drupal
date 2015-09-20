@@ -14,3 +14,4 @@
   - Mail test (convert html to text only)
   - Menu test
   - Pager test
+  - Path test

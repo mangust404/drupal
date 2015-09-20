@@ -128,7 +128,7 @@ function path_admin_form(&$form_state, $edit = array('src' => '', 'dst' => '', '
  * Verify that a new URL alias is valid
  */
 function path_admin_form_validate($form, &$form_state) {
-  $src = $form_state['values']['src'];
+  $src = drupal_get_normal_path($form_state['values']['src']);
   $dst = $form_state['values']['dst'];
   $pid = isset($form_state['values']['pid']) ? $form_state['values']['pid'] : 0;
   // Language is only set if locale module is enabled, otherwise save for all languages.
@@ -148,7 +148,7 @@ function path_admin_form_validate($form, &$form_state) {
  */
 function path_admin_form_submit($form, &$form_state) {
   // Language is only set if locale module is enabled
-  path_set_alias($form_state['values']['src'], $form_state['values']['dst'], isset($form_state['values']['pid']) ? $form_state['values']['pid'] : 0, isset($form_state['values']['language']) ? $form_state['values']['language'] : '');
+  path_set_alias(drupal_get_normal_path($form_state['values']['src']), $form_state['values']['dst'], isset($form_state['values']['pid']) ? $form_state['values']['pid'] : 0, isset($form_state['values']['language']) ? $form_state['values']['language'] : '');
 
   drupal_set_message(t('The alias has been saved.'));
   $form_state['redirect'] = 'admin/build/path';
