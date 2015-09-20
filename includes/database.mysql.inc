@@ -127,6 +127,18 @@ function _db_query($query, $debug = 0) {
   }
 
   if (!mysql_errno($active_db)) {
+    if (error_reporting() & E_WARNING) {
+      if ($warning_result = mysql_query("SELECT @@warning_count")) {
+          $warning_count = mysql_fetch_row($warning_result);
+          if ($warning_count[0] > 0) {
+            if ($warnings_result = mysql_query($active_db, "SHOW WARNINGS")) {
+              $row = mysql_fetch_row($warnings_result);
+              trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_WARNING);
+            }
+          }
+      }
+    }
+
     return $result;
   }
   else {

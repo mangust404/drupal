@@ -144,7 +144,7 @@ function _db_process_field($field) {
     $field['mysql_type'] = $map[$field['type'] .':'. $field['size']];
   }
 
-  if ($field['type'] == 'serial') {
+  if (isset($field['type']) && $field['type'] == 'serial') {
     $field['auto_increment'] = TRUE;
   }
 
@@ -165,7 +165,7 @@ function _db_process_field($field) {
 function _db_create_field_sql($name, $spec) {
   $sql = "`". $name ."` ". $spec['mysql_type'];
 
-  if (in_array($spec['type'], array('varchar', 'char', 'text')) && isset($spec['length'])) {
+  if (isset($spec['type']) && in_array($spec['type'], array('varchar', 'char', 'text')) && isset($spec['length'])) {
     $sql .= '('. $spec['length'] .')';
   }
   elseif (isset($spec['precision']) && isset($spec['scale'])) {
@@ -192,7 +192,11 @@ function _db_create_field_sql($name, $spec) {
   }
 
   if (empty($spec['not null']) && !isset($spec['default'])) {
-    $sql .= ' DEFAULT NULL';
+    if (!empty($spec['mysql_type']) && $spec['mysql_type'] == 'timestamp') {
+      // Since Mysql 5.6.6 "timestamp DEFAULT NULL" will raise a DB exception.
+    } else {
+      $sql .= ' DEFAULT NULL';
+    }
   }
 
   return $sql;
@@ -396,6 +400,38 @@ function db_drop_primary_key(&$ret, $table) {
 }
 
 /**
+ * Get all keys or indexes for the table.
+ *
+ * @param $table
+ *   The table for which you want to get indexes list.
+ * @param $unique
+ *   TRUE if you want to get only unique keys, FALSE for only indexes
+ *
+ * @return
+ *  Assoc array of arrays in format:
+ *    array(
+ *      'index_name' => ('column1', 'column2', ..)
+ *    )
+ */
+function db_get_keys($table, $unique = FALSE) {
+  $full_table = db_prefix_tables('{' . $table . '}');
+
+  $sql = "SHOW INDEX FROM {%s} WHERE Non_unique = %d";
+
+  $result = db_query($sql, $table, !$unique);
+  $keys = array();
+  while ($column = db_fetch_array($result)) {
+    $index_name = $column['Key_name'];
+
+    if (empty($keys[$index_name])) {
+      $keys[$index_name] = array();
+    }
+    $keys[$index_name][] = $column['Column_name'];
+  }
+  return $keys;
+}
+
+/**
  * Add a unique key.
  *
  * @param $ret
@@ -410,6 +446,21 @@ function db_drop_primary_key(&$ret, $table) {
 function db_add_unique_key(&$ret, $table, $name, $fields) {
   $ret[] = update_sql('ALTER TABLE {'. $table .'} ADD UNIQUE KEY '.
     $name .' ('. _db_create_key_sql($fields) .')');
+}
+
+/**
+ * Get all indexes for the table
+ *
+ * @param $table
+ *  The table for which you want to get indexes list.
+ * @return
+ *  Assoc array of arrays in format:
+ *    array(
+ *      'index_name' => ('column1', 'column2', ..)
+ *    )
+ */
+function db_get_unique_keys($table) {
+  return db_get_keys($table, TRUE);
 }
 
 /**
@@ -441,6 +492,21 @@ function db_drop_unique_key(&$ret, $table, $name) {
 function db_add_index(&$ret, $table, $name, $fields) {
   $query = 'ALTER TABLE {'. $table .'} ADD INDEX '. $name .' ('. _db_create_key_sql($fields) .')';
   $ret[] = update_sql($query);
+}
+
+/**
+ * Get all indexes for the table
+ *
+ * @param $table
+ *  The table for which you want to get indexes list.
+ * @return
+ *  Assoc array of arrays in format:
+ *    array(
+ *      'index_name' => ('column1', 'column2', ..)
+ *    )
+ */
+function db_get_indexes($table) {
+  return db_get_keys($table, FALSE);
 }
 
 /**
@@ -539,4 +605,17 @@ function db_change_field(&$ret, $table, $field, $field_new, $spec, $keys_new = a
  */
 function db_last_insert_id($table, $field) {
   return db_result(db_query('SELECT LAST_INSERT_ID()'));
+}
+
+/**
+ * Check if specified field exists in the table
+ *
+ * @param $table
+ *  The table where to check.
+ * @param $field
+ *  Field to check for existence.
+ * @return TRUE if field exists or FALSE if not
+ */
+function db_field_exists($table, $field) {
+  return $field == db_result(db_query("SELECT column_name FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '{" . $table . "}' AND column_name = '%s'", $field));
 }

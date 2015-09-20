@@ -5,6 +5,9 @@
  * Database interface code for PostgreSQL database servers.
  */
 
+define('DB_PGSQL_UNIQUE_KEY_SUFFIX', '_key');
+define('DB_PGSQL_INDEX_SUFFIX', '_idx');
+
 /**
  * @ingroup database
  * @{
@@ -497,7 +500,7 @@ function db_create_table_sql($name, $table) {
   }
   if (isset($table['unique keys']) && is_array($table['unique keys'])) {
     foreach ($table['unique keys'] as $key_name => $key) {
-      $sql_keys[] = 'CONSTRAINT {'. $name .'}_'. $key_name .'_key UNIQUE ('. implode(', ', $key) .')';
+      $sql_keys[] = 'CONSTRAINT {' . $name . '}_' . $key_name . DB_PGSQL_UNIQUE_KEY_SUFFIX . ' UNIQUE ('. implode(', ', $key) .')';
     }
   }
 
@@ -520,7 +523,7 @@ function db_create_table_sql($name, $table) {
 }
 
 function _db_create_index_sql($table, $name, $fields) {
-  $query = 'CREATE INDEX {'. $table .'}_'. $name .'_idx ON {'. $table .'} (';
+  $query = 'CREATE INDEX {' . $table . '}_' . $name . DB_PGSQL_INDEX_SUFFIX . ' ON {' . $table . '} (';
   $query .= _db_create_key_sql($fields) .')';
   return $query;
 }
@@ -569,7 +572,7 @@ function _db_process_field($field) {
     $map = db_type_map();
     $field['pgsql_type'] = $map[$field['type'] .':'. $field['size']];
   }
-  if ($field['type'] == 'serial') {
+  if (isset($field['type']) && $field['type'] == 'serial') {
     unset($field['not null']);
   }
   return $field;
@@ -589,11 +592,11 @@ function _db_process_field($field) {
 function _db_create_field_sql($name, $spec) {
   $sql = $name .' '. $spec['pgsql_type'];
 
-  if ($spec['type'] == 'serial') {
+  if (isset($field['type']) && $spec['type'] == 'serial') {
     unset($spec['not null']);
   }
 
-  if (in_array($spec['type'], array('varchar', 'char', 'text')) && isset($spec['length'])) {
+  if (isset($field['type']) && in_array($spec['type'], array('varchar', 'char', 'text')) && isset($spec['length'])) {
     $sql .= '('. $spec['length'] .')';
   }
   elseif (isset($spec['precision']) && isset($spec['scale'])) {
@@ -626,6 +629,13 @@ function _db_create_field_sql($name, $spec) {
  *   The new name for the table.
  */
 function db_rename_table(&$ret, $table, $new_name) {
+  // At first rename indexes if present
+  $full_table = db_prefix_tables('{' . $table . '}');
+  $full_new_name = db_prefix_tables('{' . $new_name . '}');
+  foreach(db_get_indexes($table) as $index_name => $cols) {
+    $ret[] = update_sql('ALTER INDEX ' . $full_table . '_' . $index_name . DB_PGSQL_INDEX_SUFFIX . ' RENAME TO ' . $full_new_name . '_' . $index_name . DB_PGSQL_INDEX_SUFFIX);
+  }
+
   $ret[] = update_sql('ALTER TABLE {'. $table .'} RENAME TO {'. $new_name .'}');
 }
 
@@ -714,7 +724,7 @@ function db_drop_field(&$ret, $table, $field) {
  *   Default value to be set. NULL for 'default NULL'.
  */
 function db_field_set_default(&$ret, $table, $field, $default) {
-  if ($default == NULL) {
+  if ($default === NULL) {
     $default = 'NULL';
   }
   else {
@@ -766,6 +776,57 @@ function db_drop_primary_key(&$ret, $table) {
 }
 
 /**
+ * Get all keys or indexes for the table.
+ *
+ * @param $table
+ *   The table for which you want to get indexes list.
+ * @param $unique
+ *   TRUE if you want to get only unique keys, FALSE for only indexes
+ *
+ * @return
+ *  Assoc array of arrays in format:
+ *    array(
+ *      'index_name' => ('column1', 'column2', ..)
+ *    )
+ */
+function db_get_keys($table, $unique = FALSE) {
+  $full_table = db_prefix_tables('{' . $table . '}');
+
+  $sql = "SELECT i.relname as index_name, a.attname as column_name" . 
+    " FROM pg_class t, pg_class i, pg_index ix, pg_attribute a" . 
+    " WHERE " . 
+      "t.oid = ix.indrelid AND " . 
+      "i.oid = ix.indexrelid AND " . 
+      "a.attrelid = t.oid AND " . 
+      "a.attnum = ANY(ix.indkey) AND " .
+      "t.relkind = 'r' AND " . 
+      "ix.indisunique = " . ($unique? 'true': 'false') . " AND " . 
+      "i.relname LIKE '%" . ($unique? DB_PGSQL_UNIQUE_KEY_SUFFIX: DB_PGSQL_INDEX_SUFFIX) . "' AND " . 
+      "t.relname = '$full_table' " . 
+    " ORDER BY t.relname, i.relname";
+
+  $result = db_query($sql);
+  $keys = array();
+  while ($column = db_fetch_array($result)) {
+    $index_name = $column['index_name'];
+    // Remove table name from the beginning
+    if (strpos($index_name, $full_table) === 0) {
+      $index_name = substr($index_name, strlen($full_table) + 1);
+    }
+    // Remove trailing index suffix from index name
+    if (substr($index_name, -4, 4) == DB_PGSQL_INDEX_SUFFIX) {
+      $index_name = substr($index_name, 0, -4);
+    }
+
+    if (empty($keys[$index_name])) {
+      $keys[$index_name] = array();
+    }
+    $keys[$index_name][] = $column['column_name'];
+  }
+  return $keys;
+}
+
+/**
  * Add a unique key.
  *
  * @param $ret
@@ -781,6 +842,21 @@ function db_add_unique_key(&$ret, $table, $name, $fields) {
   $name = '{'. $table .'}_'. $name .'_key';
   $ret[] = update_sql('ALTER TABLE {'. $table .'} ADD CONSTRAINT '.
     $name .' UNIQUE ('. implode(',', $fields) .')');
+}
+
+/**
+ * Get all indexes for the table
+ *
+ * @param $table
+ *  The table for which you want to get indexes list.
+ * @return
+ *  Assoc array of arrays in format:
+ *    array(
+ *      'index_name' => ('column1', 'column2', ..)
+ *    )
+ */
+function db_get_unique_keys($table) {
+  return db_get_keys($table, TRUE);
 }
 
 /**
@@ -815,6 +891,21 @@ function db_add_index(&$ret, $table, $name, $fields) {
 }
 
 /**
+ * Get all indexes for the table
+ *
+ * @param $table
+ *  The table for which you want to get indexes list.
+ * @return
+ *  Assoc array of arrays in format:
+ *    array(
+ *      'index_name' => ('column1', 'column2', ..)
+ *    )
+ */
+function db_get_indexes($table) {
+  return db_get_keys($table, FALSE);
+}
+
+/**
  * Drop an index.
  *
  * @param $ret
@@ -825,7 +916,7 @@ function db_add_index(&$ret, $table, $name, $fields) {
  *   The name of the index.
  */
 function db_drop_index(&$ret, $table, $name) {
-  $name = '{'. $table .'}_'. $name .'_idx';
+  $name = '{'. $table .'}_'. $name . DB_PGSQL_INDEX_SUFFIX;
   $ret[] = update_sql('DROP INDEX '. $name);
 }
 
@@ -920,6 +1011,19 @@ function db_change_field(&$ret, $table, $field, $field_new, $spec, $new_keys = a
   if (isset($new_keys)) {
     _db_create_keys($ret, $table, $new_keys);
   }
+}
+
+/**
+ * Check if specified field exists in the table
+ *
+ * @param $table
+ *  The table where to check.
+ * @param $field
+ *  Field to check for existence.
+ * @return TRUE if field exists or FALSE if not
+ */
+function db_field_exists($table, $field) {
+  return $field == db_result(db_query("SELECT column_name FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '{" . $table . "}' AND column_name = '%s'", $field));
 }
 
 /**

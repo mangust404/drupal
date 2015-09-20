@@ -126,6 +126,13 @@ function _db_query($query, $debug = 0) {
   }
 
   if (!mysqli_errno($active_db)) {
+    if (error_reporting() & E_WARNING && mysqli_warning_count($active_db) > 0) {
+      if ($warnings_result = mysqli_query($active_db, "SHOW WARNINGS")) {
+          $row = mysqli_fetch_row($warnings_result);
+          trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_WARNING);
+      }
+    }
+    
     return $result;
   }
   else {

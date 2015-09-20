@@ -15,3 +15,4 @@
   - Menu test
   - Pager test
   - Path test
+  - Schema API test
