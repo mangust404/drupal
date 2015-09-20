@@ -75,18 +75,19 @@ function pager_query($query, $limit = 10, $element = 0, $count_query = NULL) {
 }
 
 /**
- * Compose a query string to append to pager requests.
+ * Compose a URL query parameter array for pager links.
+ * Backport from D7.
  *
  * @return
- *   A query string that consists of all components of the current page request
- *   except for those pertaining to paging.
+ *   A URL query parameter array that consists of all components of the current
+ *   page request except for those pertaining to paging.
  */
-function pager_get_querystring() {
-  static $string = NULL;
-  if (!isset($string)) {
-    $string = drupal_get_query_parameters($_REQUEST, array_merge(array('q', 'page', 'pass'), array_keys($_COOKIE)));
+function pager_get_query_parameters() {
+  $query = &drupal_static(__FUNCTION__);
+  if (!isset($query)) {
+    $query = drupal_get_query_parameters($_GET, array('q', 'page', 'pass'));
   }
-  return $string;
+  return $query;
 }
 
 /**
@@ -383,14 +384,7 @@ function theme_pager_link($text, $page_new, $element, $parameters = array(), $at
     $parameters['page'] = $new_page;
   }
 
-  $query = array();
-  if (count($parameters)) {
-    $query[] = drupal_query_string_encode($parameters, array());
-  }
-  $querystring = pager_get_querystring();
-  if ($querystring != '') {
-    $query[] = $querystring;
-  }
+  $query = $parameters + pager_get_query_parameters();
 
   // Set each pager link title
   if (!isset($attributes['title'])) {
@@ -411,7 +405,13 @@ function theme_pager_link($text, $page_new, $element, $parameters = array(), $at
     }
   }
 
-  return l($text, $_GET['q'], array('attributes' => $attributes, 'query' => count($query) ? implode('&', $query) : NULL));
+  // @todo l() cannot be used here, since it adds an 'active' class based on the
+  //   path only (which is always the current path for pager links). Apparently,
+  //   none of the pager links is active at any time - but it should still be
+  //   possible to use l() here.
+  // @see http://drupal.org/node/1410574
+  $attributes['href'] = url($_GET['q'], array('query' => $query));
+  return '<a' . drupal_attributes($attributes) . '>' . check_plain($text) . '</a>';
 }
 
 /**
