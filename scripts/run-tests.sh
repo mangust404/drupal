@@ -517,7 +517,7 @@ function simpletest_script_get_test_list() {
  * Initialize the reporter.
  */
 function simpletest_script_reporter_init() {
-  global $args, $all_tests, $test_list;
+  global $args, $all_tests, $test_list, $db_type;
 
   echo "\n";
   echo "Drupal test run\n";
@@ -534,6 +534,8 @@ function simpletest_script_reporter_init() {
       $info = call_user_func(array($class_name, 'getInfo'));
       echo " - " . $info['name'] . ' (' . $class_name . ')' . "\n";
     }
+    echo "\n";
+    echo "Database type: " . $db_type . "\n";
     echo "\n";
   }
 
