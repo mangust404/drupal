@@ -414,8 +414,6 @@ function db_drop_primary_key(&$ret, $table) {
  *    )
  */
 function db_get_keys($table, $unique = FALSE) {
-  $full_table = db_prefix_tables('{' . $table . '}');
-
   $sql = "SHOW INDEX FROM {%s} WHERE Non_unique = %d";
 
   $result = db_query($sql, $table, !$unique);

@@ -128,14 +128,22 @@ function _db_query($query, $debug = 0) {
 
   if (!mysql_errno($active_db)) {
     if (error_reporting() & E_WARNING) {
+      // Determining if database query raises a warning with old mysql driver
+      // require to make a database query so mysql_affected_rows will show
+      // affected rows from "show warnings" query. If E_WARNING error reporting
+      // level is enabled store each real query affected rows in a static variable.
+      // It will do unnecessary queries on a developement but it should work as usual
+      // on the production environments where E_WARNING should be disabled.
+      db_affected_rows(mysql_affected_rows($active_db));
+
       if ($warning_result = mysql_query("SELECT @@warning_count")) {
-          $warning_count = mysql_fetch_row($warning_result);
-          if ($warning_count[0] > 0) {
-            if ($warnings_result = mysql_query($active_db, "SHOW WARNINGS")) {
-              $row = mysql_fetch_row($warnings_result);
-              trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_WARNING);
-            }
+        $warning_count = mysql_fetch_row($warning_result);
+        if ($warning_count[0] > 0) {
+          if ($warnings_result = mysql_query($active_db, "SHOW WARNINGS")) {
+            $row = mysql_fetch_row($warnings_result);
+            trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_WARNING);
           }
+        }
       }
     }
 
@@ -213,9 +221,17 @@ function db_error() {
 /**
  * Determine the number of rows changed by the preceding query.
  */
-function db_affected_rows() {
-  global $active_db;
-  return mysql_affected_rows($active_db);
+function db_affected_rows($set = NULL) {
+  if (error_reporting() & E_WARNING) {
+    $num_rows = &drupal_static(__FUNCTION__);
+    if(!is_null($set)) {
+      $num_rows = $set;
+    }
+    return $num_rows;
+  } else {
+    global $active_db;
+    return mysql_affected_rows($active_db);
+  }
 }
 
 /**
