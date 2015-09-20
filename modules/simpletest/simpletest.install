@@ -18,6 +18,8 @@ function simpletest_install() {
 //  $path = 'public://simpletest';
 //  if (file_prepare_directory($path, FILE_CREATE_DIRECTORY)) {
   $path = file_directory_path() . '/simpletest';
+  drupal_load('module', 'simpletest');
+  
   if (file_check_directory($path, FILE_CREATE_DIRECTORY)) {
     // Generate binary and text test files.
     $generated = FALSE;

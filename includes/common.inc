@@ -2887,7 +2887,7 @@ function drupal_pre_render_styles($elements) {
               // browser-caching. IE7 does not support a media type on the
               // @import statement, so we instead specify the media for the
               // group on the STYLE tag.
-              $import[] = '@import url("' . url($item['data'], array('query' => $query_string)) . '");';
+              $import[] = '@import url("/' . $item['data'] . '?' . $query_string . '");';
             }
           }
           // In addition to IE's limit of 31 total CSS inclusion tags, it also

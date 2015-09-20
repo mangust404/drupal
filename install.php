@@ -4,6 +4,8 @@ require_once './includes/install.inc';
 
 define('MAINTENANCE_MODE', 'install');
 
+define('DRUPAL_ROOT', getcwd());
+
 /**
  * The Drupal installation happens in a series of steps. We begin by verifying
  * that the current environment meets our minimum requirements. We then go
@@ -18,6 +20,8 @@ define('MAINTENANCE_MODE', 'install');
 function install_main() {
   require_once './includes/bootstrap.inc';
   drupal_bootstrap(DRUPAL_BOOTSTRAP_CONFIGURATION);
+  require_once './includes/form.inc';
+  require_once './includes/session.inc';
 
   // The user agent header is used to pass a database prefix in the request when
   // running tests. However, for security reasons, it is imperative that no
@@ -492,6 +496,8 @@ function install_select_profile_form(&$form_state, $profile_files) {
     $function = $profile->name .'_profile_details';
     if (function_exists($function)) {
       $details = $function();
+    } else {
+      $details = array();
     }
     $profiles[$profile->name] = $details;
 
