@@ -145,6 +145,8 @@ abstract class DrupalTestCase {
               (test_id, test_class, status, message, message_group, function, line, file)
               VALUES (%d, '%s', '%s', '%s', '%s', '%s', %d, '%s')", array_values($assertion));
 
+    // Log current assertion to verbose output
+    simpletest_verbose_append((object)$assertion);
     // Return to testing prefix.
     $db_prefix = $current_db_prefix;
     // We do not use a ternary operator here to allow a breakpoint on
@@ -625,6 +627,8 @@ class DrupalUnitTestCase extends DrupalTestCase {
 
   function tearDown() {
     global $db_prefix, $conf;
+    // Flush all active assertions
+    simpletest_verbose_flush();
     if (preg_match('/simpletest\d+/', $db_prefix)) {
 //      $conf['file_public_path'] = $this->originalFileDirectory;
       $conf['file_directory_path'] = $this->originalFileDirectory;
@@ -1357,6 +1361,9 @@ class DrupalWebTestCase extends DrupalTestCase {
   protected function tearDown() {
     global $db_prefix, $user, $language;
 
+    // Flush all active assertions
+    simpletest_verbose_flush();
+
     // In case a fatal error occured that was not in the test process read the
     // log to pick up any fatal errors.
     $db_prefix_temp = $db_prefix;
@@ -1662,6 +1669,8 @@ class DrupalWebTestCase extends DrupalTestCase {
    */
   protected function drupalGet($path, array $options = array(), array $headers = array()) {
     $options['absolute'] = TRUE;
+    // Flush all current assertions to the previous verbose file if it's exists
+    simpletest_verbose_flush();
 
     // We re-using a CURL connection here. If that connection still has certain
     // options set, it might change the GET into a POST. Make sure we clear out
@@ -1768,6 +1777,9 @@ class DrupalWebTestCase extends DrupalTestCase {
     $ajax = is_array($submit);
     if (isset($path)) {
       $this->drupalGet($path, $options);
+    } else {
+      // Flush all current assertions to the previous verbose file if it's exists
+      simpletest_verbose_flush();
     }
     if ($this->parse()) {
       $edit_save = $edit;
@@ -2842,8 +2854,15 @@ class DrupalWebTestCase extends DrupalTestCase {
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertTitle($title, $message, $group = 'Other') {
-    return $this->assertEqual(current($this->xpath('//title')), $title, $message, $group);
+  protected function assertTitle($title, $message = '', $group = 'Other') {
+    $actual = (string) current($this->xpath('//title'));
+    if (!$message) {
+      $message = t('Page title @actual is equal to @expected.', array(
+        '@actual' => var_export($actual, TRUE),
+        '@expected' => var_export($title, TRUE),
+      ));
+    }
+    return $this->assertEqual($actual, $title, $message, $group);
   }
 
   /**
@@ -3219,6 +3238,24 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
+   * Asserts the page did not return the specified response code.
+   *
+   * @param $code
+   *   Response code. For example 200 is a successful page request. For a list
+   *   of all codes see http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html.
+   * @param $message
+   *   Message to display.
+   *
+   * @return
+   *   Assertion result.
+   */
+  protected function assertNoResponse($code, $message = '') {
+    $curl_code = curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE);
+    $match = is_array($code) ? in_array($curl_code, $code) : $curl_code == $code;
+    return $this->assertFalse($match, $message ? $message : t('HTTP response not expected !code, actual !curl_code', array('!code' => $code, '!curl_code' => $curl_code)), t('Browser'));
+  }
+
+  /**
    * Assert that the most recently sent e-mail message has a field with the given value.
    *
    * @param $name
@@ -3278,9 +3315,11 @@ class DrupalWebTestCase extends DrupalTestCase {
  * @see DrupalWebTestCase->verbose()
  */
 function simpletest_verbose($message, $original_file_directory = NULL, $test_class = NULL) {
-  static $file_directory = NULL, $class = NULL, $id = 1;
-//  $verbose = &drupal_static(__FUNCTION__);
-  static $verbose;
+  static $file_directory, $verbose, $class, $id;
+  $id = &drupal_static(__FUNCTION__ . ':id', 1);
+  $filepath = &drupal_static(__FUNCTION__ . ':filepath', '');
+  $prev_filepath = &drupal_static(__FUNCTION__ . ':prev_filepath', FALSE);
+  $assertions_flushed = &drupal_static(__FUNCTION__ . ':assertions_flushed', FALSE);
 
   // Will pass first time during setup phase, and when verbose is TRUE.
   if (!isset($original_file_directory) && !$verbose) {
@@ -3288,8 +3327,23 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
   }
 
   if ($message && $file_directory) {
+    $new_filepath = $file_directory . "/simpletest/verbose/$class-$id.html";
+
+    if(!is_file($new_filepath) && is_file($filepath)) {
+      $prev_filepath = $filepath;
+      $table_open = FALSE;
+      
+      // Flush all stored assertions to the verbose file
+      if(!$assertions_flushed) {
+        simpletest_verbose_flush($prev_filepath);
+      }
+      $assertions_flushed = FALSE;
+    }
+
+    $filepath = $new_filepath;
+
     $message = '<hr />ID #' . $id . ' (<a href="' . $class . '-' . ($id - 1) . '.html">Previous</a> | <a href="' . $class . '-' . ($id + 1) . '.html">Next</a>)<hr />' . $message;
-    file_put_contents($file_directory . "/simpletest/verbose/$class-$id.html", $message, FILE_APPEND);
+    file_put_contents($filepath, $message, FILE_APPEND);
     return $id++;
   }
 
@@ -3298,8 +3352,79 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
     $class = $test_class;
     $verbose = variable_get('simpletest_verbose', FALSE);
     $directory = $file_directory . '/simpletest/verbose';
+    simpletest_verbose_flush();
+    include_once(drupal_get_path('module', 'simpletest') . '/simpletest.pages.inc');
 //    return file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
     return file_check_directory($directory, FILE_CREATE_DIRECTORY);
   }
   return FALSE;
+}
+
+function simpletest_verbose_append($assertion) {
+  if (preg_match('/<a [^>]+>' . t('Verbose message') . '/', $assertion->message)) {
+    // Don't include "Verbose message" in the verbose messages
+    return;
+  }
+
+  $stored = &drupal_static('simpletest_verbose_append', array());
+  $stored[] = $assertion;
+}
+
+function simpletest_verbose_flush($filepath = NULL) {
+  static $verbose;
+
+  if(is_null($verbose)) {
+    // Initialize static variables
+    $verbose = variable_get('simpletest_verbose', FALSE);
+    $zebra = FALSE;
+  }
+
+  if(empty($filepath)) {
+    // Flush everything to the current verbose file
+    $filepath = drupal_static('simpletest_verbose:filepath', '');
+  }
+
+  // Don't log anything if verbose mode is off or verbose file doesn't exists
+  if(!$verbose || empty($filepath) || !is_file($filepath)) {
+    return;
+  }
+
+  $stored = &drupal_static('simpletest_verbose_append', array());
+  $assertions_flushed = &drupal_static(__FUNCTION__ . ':assertions_flushed', FALSE);
+
+  if(empty($stored)) {
+    return;
+  }
+
+  if(!$assertions_flushed || $assertions_flushed != $filepath) {
+    // Open table output in a new verbose file and add styles
+    file_put_contents($filepath, '<br /><hr /><br />' . "\n" .
+      '<h2>' . t('Assertions:') . '</h2>' . "\n" .  
+      '<link rel="stylesheet" type="text/css" media="screen" href="' . url(drupal_get_path('module', 'simpletest') . '/simpletest.css', array('absolute' => TRUE)) . '">' . "\n" . 
+      '<table><tbody>' . "\n", FILE_APPEND);
+  }
+
+  $zebra = FALSE;
+  foreach($stored as $assertion) {
+    $row = array();
+    $row[] = $assertion->message;
+    $row[] = $assertion->message_group;
+    $row[] = basename($assertion->file);
+    $row[] = $assertion->line;
+    $row[] = $assertion->function;
+    // We should replace relative path to absolute in images because verbose 
+    // messages could be opened as a local file, e.g. file:///path/to/verbose.html.
+    $row[] = str_replace('src="/', 'src="' . url('', array('absolute' => TRUE)) . '/', simpletest_result_status_image($assertion->status));
+
+    $zebra = !(bool)$zebra;
+
+    file_put_contents($filepath, '<tr class="simpletest-' . $assertion->status . ' ' . ($zebra? 'even': 'odd') . '"><td>' . implode('</td><td>', $row) . '</td></tr>' . "\n", FILE_APPEND);
+  }
+
+  // No need to close markup because test still can append assertions
+
+  // Clean all stored assertions
+  $stored = array();
+
+  $assertions_flushed = $filepath;
 }
