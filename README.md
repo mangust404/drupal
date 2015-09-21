@@ -16,3 +16,4 @@
   - Pager test
   - Path test
   - Schema API test
+  - Tablesort test

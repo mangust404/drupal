@@ -135,7 +135,7 @@ function tablesort_cell($cell, $header, $ts, $i) {
  *   except for those pertaining to table sorting.
  */
 function tablesort_get_querystring() {
-  return drupal_get_query_parameters($_REQUEST, array_merge(array('q', 'sort', 'order', 'pass'), array_keys($_COOKIE)));
+  return drupal_get_query_parameters($_GET, array_merge(array('q', 'sort', 'order', 'pass'), array_keys($_COOKIE)));
 }
 
 /**
@@ -155,7 +155,7 @@ function tablesort_get_order($headers) {
       return array('name' => $header['data'], 'sql' => isset($header['field']) ? $header['field'] : '');
     }
 
-    if (isset($header['sort']) && ($header['sort'] == 'asc' || $header['sort'] == 'desc')) {
+    if (empty($default) && isset($header['sort']) && ($header['sort'] == 'asc' || $header['sort'] == 'desc')) {
       $default = array('name' => $header['data'], 'sql' => isset($header['field']) ? $header['field'] : '');
     }
   }
@@ -180,6 +180,7 @@ function tablesort_get_order($headers) {
  *
  * @param $headers
  *   An array of column headers in the format described in theme_table().
+ *
  * @return
  *   The current sort direction ("asc" or "desc").
  */
@@ -189,8 +190,10 @@ function tablesort_get_sort($headers) {
   }
   // User has not specified a sort. Use default if specified; otherwise use "asc".
   else {
+    // Find out which header is currently being sorted.
+    $ts = tablesort_get_order($headers);
     foreach ($headers as $header) {
-      if (is_array($header) && array_key_exists('sort', $header)) {
+      if (is_array($header) && isset($header['data']) && $header['data'] == $ts['name'] && isset($header['sort'])) {
         return $header['sort'];
       }
     }
