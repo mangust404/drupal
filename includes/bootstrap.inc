@@ -1265,7 +1265,9 @@ function check_plain($text) {
   // internally by PHP in htmlspecialchars().
   // @see http://www.php.net/releases/5_2_5.php
   // @todo remove this when support for either IE6 or PHP < 5.2.5 is dropped.
-
+if(is_array($text)) {
+  print_r(debug_backtrace());
+}
   if ($php525) {
     return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
   }

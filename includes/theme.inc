@@ -39,11 +39,11 @@ define('MARK_UPDATED', 2);
 /**
  * Initialize the theme system by loading the theme.
  */
-function init_theme() {
+function init_theme($reset = FALSE) {
   global $theme, $user, $custom_theme, $theme_key;
 
   // If $theme is already set, assume the others are set, too, and do nothing
-  if (isset($theme)) {
+  if (isset($theme) && empty($reset)) {
     return;
   }
 
@@ -68,7 +68,7 @@ function init_theme() {
     $base_theme[] = $new_base_theme = $themes[$themes[$ancestor]->base_theme];
     $ancestor = $themes[$ancestor]->base_theme;
   }
-  _init_theme($themes[$theme], array_reverse($base_theme));
+  return _init_theme($themes[$theme], array_reverse($base_theme));
 }
 
 /**
@@ -188,7 +188,7 @@ function _init_theme($theme, $base_theme = array(), $registry_callback = '_theme
     }
   }
 
-  $registry_callback($theme, $base_theme, $theme_engine);
+  return $registry_callback($theme, $base_theme, $theme_engine);
 }
 
 /**
@@ -198,9 +198,15 @@ function _init_theme($theme, $base_theme = array(), $registry_callback = '_theme
  * cache it.
  */
 function theme_get_registry($registry = NULL) {
-  static $theme_registry = NULL;
+  $theme_registry = &drupal_static(__FUNCTION__);
   if (isset($registry)) {
     $theme_registry = $registry;
+  }
+
+  // Initialize the theme, if this is called early in the bootstrap, or after
+  // static variables have been reset.
+  if (!is_array($theme_registry)) {
+    $theme_registry = init_theme(TRUE);
   }
 
   return $theme_registry;
@@ -238,6 +244,8 @@ function _theme_load_registry($theme, $base_theme = NULL, $theme_engine = NULL) 
     _theme_save_registry($theme, $registry);
   }
   _theme_set_registry($registry);
+
+  return $registry;
 }
 
 /**
@@ -666,11 +674,7 @@ function theme() {
   $args = func_get_args();
   $hook = array_shift($args);
 
-  static $hooks = NULL;
-  if (!isset($hooks)) {
-    init_theme();
-    $hooks = theme_get_registry();
-  }
+  $hooks = theme_get_registry();
 
   if (is_array($hook)) {
     foreach ($hook as $candidate) {
@@ -682,7 +686,7 @@ function theme() {
   }
 
   if (!isset($hooks[$hook])) {
-    return;
+    return '';
   }
 
   $info = $hooks[$hook];
@@ -1074,6 +1078,14 @@ function theme_get_setting($setting_name, $refresh = FALSE) {
 
     $themes = list_themes();
     $theme_object = $themes[$theme_key];
+
+    if(!empty($theme_object->info['settings'])) {
+      foreach ($theme_object->info['settings'] as $name => $default) {
+        if (!isset($settings[$name])) {
+          $settings[$name] = $default;
+        }
+      }
+    }
 
     if ($settings['mission'] == '') {
       $settings['mission'] = variable_get('site_mission', '');
@@ -1648,7 +1660,8 @@ function theme_item_list($items = array(), $title = NULL, $type = 'ul', $attribu
   if (!empty($items)) {
     $output .= "<$type". drupal_attributes($attributes) .'>';
     $num_items = count($items);
-    foreach ($items as $i => $item) {
+    $i = 0;
+    foreach ($items as $item) {
       $attributes = array();
       $children = array();
       if (is_array($item)) {
@@ -1677,6 +1690,7 @@ function theme_item_list($items = array(), $title = NULL, $type = 'ul', $attribu
         $attributes['class'] = empty($attributes['class']) ? 'last' : ($attributes['class'] .' last');
       }
       $output .= '<li'. drupal_attributes($attributes) .'>'. $data ."</li>\n";
+      $i++;
     }
     $output .= "</$type>";
   }

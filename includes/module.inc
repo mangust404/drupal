@@ -215,6 +215,8 @@ function system_list_reset() {
   drupal_static_reset('system_list');
   drupal_static_reset('system_rebuild_module_data');
   drupal_static_reset('list_themes');
+  drupal_static_reset('_system_theme_data');
+  system_theme_data();
   cache_clear_all('bootstrap_modules', 'cache');
   cache_clear_all('system_list', 'cache');
 }

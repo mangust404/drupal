@@ -903,6 +903,8 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     $this->assert(strpos($styles, $simpletest . '/tests/system.css') !== FALSE, 'The overriding CSS file is output.');
     $this->assert(strpos($styles, $system . '/system.css') === FALSE, 'The overridden CSS file is not output.');
 
+    drupal_static_reset('drupal_add_css');
+    
     drupal_add_css($simpletest . '/tests/system.css');
     drupal_add_css($system . '/system.css');
 

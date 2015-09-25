@@ -17,3 +17,4 @@
   - Path test
   - Schema API test
   - Tablesort test
+  - Theme test

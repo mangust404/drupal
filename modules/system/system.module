@@ -1093,16 +1093,27 @@ function system_theme_data() {
  *   An associative array of themes information.
  */
 function _system_theme_data() {
-  static $themes_info = array();
+  $themes_info = drupal_static(__FUNCTION__);
 
   if (empty($themes_info)) {
     // Find themes
     $themes = drupal_system_listing('\.info$', 'themes');
+    // Allow modules to add further themes.
+    if ($module_themes = module_invoke_all('system_theme_info')) {
+      foreach ($module_themes as $name => $uri) {
+        // @see file_scan_directory()
+        $themes[$name] = (object) array(
+          'filename' => $uri,
+          'basename' => pathinfo($uri, PATHINFO_FILENAME),
+          'name' => $name,
+        );
+      }
+    }
+
     // Find theme engines
     $engines = drupal_system_listing('\.engine$', 'themes/engines');
 
     $defaults = system_theme_default();
-ini_set('display_errors', 'on');
     $sub_themes = array();
     // Read info files for each theme
     foreach ($themes as $key => $theme) {
