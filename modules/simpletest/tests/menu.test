@@ -1011,15 +1011,15 @@ class MenuTreeOutputTestCase extends DrupalWebTestCase {
     //$this->assertEqual($output['1']['#theme'], 'menu_link__main_menu', 'Hyphen is changed to an underscore on menu_link');
     //$this->assertEqual($output['#theme_wrappers'][0], 'menu_tree__main_menu', 'Hyphen is changed to an underscore on menu_tree wrapper');
     // Looking for child items in the data
-    $link = $this->xpath('//ul/li[1]/ul[1]/li[1]/a[@href="/a/b"]');
+    $link = $this->xpath('//ul/li[1]/ul[1]/li[1]/a[@href="' . base_path() . 'a/b"]');
     $this->assertEqual( count($link), 1, 'Checking the href on a child item');
     $list_item = $this->xpath('//ul/li[1]/ul[1]/li[1]');
     $this->assertTrue( strpos($list_item[0]->attributes()->class, 'active-trail') !== FALSE , 'Checking the active trail class');
     // Validate that the hidden and no access items are missing
-    $this->assertFalse( $this->xpath('//a[@href="/e"]'), 'Hidden item should be missing');
-    $this->assertFalse( $this->xpath('//a[@href="/f"]'), 'False access should be missing');
+    $this->assertFalse( $this->xpath('//a[@href="' . base_path() . 'e"]'), 'Hidden item should be missing');
+    $this->assertFalse( $this->xpath('//a[@href="' . base_path() . 'f"]'), 'False access should be missing');
     // Item 7 is after a couple hidden items. Just to make sure that 5 and 6 are skipped and 7 still included
-    $last = $this->xpath('//a[@href="/g"]');
+    $last = $this->xpath('//a[@href="' . base_path() . 'g"]');
     $this->assertTrue( !empty($last), 'Item after hidden items is present');
   }
 }

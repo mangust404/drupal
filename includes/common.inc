@@ -2804,6 +2804,8 @@ function drupal_aggregate_css(&$css_groups) {
  * @see drupal_get_css()
  */
 function drupal_pre_render_styles($elements) {
+  global $base_path;
+
   // Group and aggregate the items.
   if (isset($elements['#group_callback'])) {
     $elements['#groups'] = $elements['#group_callback']($elements['#items']);
@@ -2887,7 +2889,7 @@ function drupal_pre_render_styles($elements) {
               // browser-caching. IE7 does not support a media type on the
               // @import statement, so we instead specify the media for the
               // group on the STYLE tag.
-              $import[] = '@import url("/' . $item['data'] . '?' . $query_string . '");';
+              $import[] = '@import url("' . base_path() . $item['data'] . '?' . $query_string . '");';
             }
           }
           // In addition to IE's limit of 31 total CSS inclusion tags, it also
@@ -3742,7 +3744,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL, $skip_alter = FALS
             $js_element['#attributes']['defer'] = 'defer';
           }
           $query_string_separator = (strpos($item['data'], '?') !== FALSE) ? '&' : '?';
-          $js_element['#attributes']['src'] = '/' . $item['data'] . $query_string_separator . ($item['cache'] ? $query_string : REQUEST_TIME);
+          $js_element['#attributes']['src'] = base_path() . $item['data'] . $query_string_separator . ($item['cache'] ? $query_string : REQUEST_TIME);
           $processed[$index++] = theme('html_tag', $js_element);
         }
         else {

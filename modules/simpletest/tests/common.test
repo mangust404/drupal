@@ -868,10 +868,10 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     drupal_add_css($system_path . '/admin.css', array('group' => CSS_SYSTEM));
 
     $expected = array(
-      $system_path . '/system.css',
-      $system_path . '/system-menus.css',
-      $system_path . '/admin.css',
-      drupal_get_path('module', 'simpletest') . '/simpletest.css',
+      base_path() . $system_path . '/system.css',
+      base_path() . $system_path . '/system-menus.css',
+      base_path() . $system_path . '/admin.css',
+      base_path() . drupal_get_path('module', 'simpletest') . '/simpletest.css',
     );
 
 
@@ -879,7 +879,7 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     // Stylesheet URL may be the href of a LINK tag or in an @import statement
     // of a STYLE tag.
     if (preg_match_all('/(href="|url\(")((\/|' . preg_quote($GLOBALS['base_url'] . '/', '/') . ')?([^?]+))\?/', $styles, $matches)) {
-      $result = $matches[4];
+      $result = $matches[2];
     }
     else {
       $result = array();

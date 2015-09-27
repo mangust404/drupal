@@ -67,7 +67,12 @@ function file_create_url($path) {
   } else {
     // If file is not within file directory path, then it is a shipped file.
     // Therefore, return the urlencoded URI with the base URL prepended.
-    return $GLOBALS['base_url'] . '/' . drupal_encode_path($path);
+    if (strpos($path, base_path()) === 0) {
+      return drupal_encode_path($path);
+    }
+    else {
+      return base_path() . drupal_encode_path($path);
+    }
   }
 }
 
