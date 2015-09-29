@@ -229,13 +229,16 @@ function update_script_selection_form() {
         continue;
       }
       $updates = drupal_map_assoc($updates);
-      $updates[] = 'No updates available';
       $default = $schema_version;
       foreach (array_keys($updates) as $update) {
-        if ($update > $schema_version) {
+        if ($update > $default) {
           $default = $update;
-          break;
         }
+      }
+      $updates[] = 'No updates available';
+      if($schema_version == $default) {
+        end($updates);
+        $default = key($updates);
       }
       $form['start'][$module] = array(
         '#type' => 'select',
@@ -263,14 +266,11 @@ function update_batch() {
   $operations = array();
   // Set the installed version so updates start at the correct place.
   foreach ($_POST['start'] as $module => $version) {
-    drupal_set_installed_schema_version($module, $version - 1);
     $updates = drupal_get_schema_versions($module);
-    $max_version = max($updates);
-    if ($version <= $max_version) {
-      foreach ($updates as $update) {
-        if ($update >= $version) {
-          $operations[] = array('update_do_one', array($module, $update));
-        }
+    $current = drupal_get_installed_schema_version($module);
+    foreach ($updates as $update) {
+      if ($update <= $version && $update > $current) {
+        $operations[] = array('update_do_one', array($module, $update));
       }
     }
   }

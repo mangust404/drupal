@@ -1,0 +1,18 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the update_test module.
+ */
+
+function update_test_update_1($ret) {
+  variable_set('update_test_update_1', TRUE);
+  $ret[] = array('success' => TRUE, 'query' => "SELECT 'update success'");
+  return $ret;
+}
+
+function update_test_update_2($ret) {
+  variable_set('update_test_update_2', TRUE);
+  $ret[] = array('success' => FALSE, 'query' => "SELECT 'update failure'");
+  return $ret;
+}
