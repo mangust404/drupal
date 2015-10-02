@@ -4,6 +4,7 @@
  * @file
  * Handles incoming requests to fire off regularly-scheduled tasks (cron jobs).
  */
+define('DRUPAL_ROOT', dirname(__FILE__));
 
 include_once './includes/bootstrap.inc';
 drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);

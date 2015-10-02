@@ -19,5 +19,6 @@
   - Tablesort test
   - Theme test
 - Modules tests:
+  - Aggregator
   - Blocks (full version from D7)
   
