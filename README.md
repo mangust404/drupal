@@ -21,4 +21,4 @@
 - Modules tests:
   - Aggregator
   - Blocks (full version from D7)
-  
+  - Blog
