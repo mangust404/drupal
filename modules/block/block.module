@@ -206,6 +206,8 @@ function block_block($op = 'list', $delta = 0, $edit = array()) {
       }
       if (filter_access($box['format'])) {
         return block_box_form($box);
+      } else {
+        drupal_set_message(t('This field has been disabled because you do not have sufficient permissions to edit it.'), 'warning');
       }
       break;
 
@@ -282,10 +284,12 @@ function _block_rehash($theme = NULL) {
           // Add 'info' to this block.
           $old_blocks[$module][$delta]['info'] = $block['info'];
           // If the region name does not exist, disable the block and assign it to none.
-          if (!empty($old_blocks[$module][$delta]['region']) && !isset($regions[$old_blocks[$module][$delta]['region']])) {
+          if ($old_blocks[$module][$delta]['status'] && !empty($old_blocks[$module][$delta]['region']) && !isset($regions[$old_blocks[$module][$delta]['region']])) {
             drupal_set_message(t('The block %info was assigned to the invalid region %region and has been disabled.', array('%info' => $old_blocks[$module][$delta]['info'], '%region' => $old_blocks[$module][$delta]['region'])), 'warning');
             $old_blocks[$module][$delta]['status'] = 0;
             $old_blocks[$module][$delta]['region'] = BLOCK_REGION_NONE;
+            // Save changes
+            db_query("UPDATE {blocks} SET status = 0, region = '%s' WHERE bid = %d", BLOCK_REGION_NONE, $old_blocks[$module][$delta]['bid']);
           }
           else {
             $old_blocks[$module][$delta]['region'] = $old_blocks[$module][$delta]['status'] ? $old_blocks[$module][$delta]['region'] : BLOCK_REGION_NONE;
@@ -427,6 +431,7 @@ function block_user($type, $edit, &$account, $category = NULL) {
 
       break;
     case 'validate':
+    //print_R($edit);
       if (empty($edit['block'])) {
         $edit['block'] = array();
       }
@@ -464,8 +469,9 @@ function block_list($region) {
       }
       // Use the user's block visibility setting, if necessary
       if ($block->custom != 0) {
-        if ($user->uid && isset($user->block[$block->module][$block->delta])) {
-          $enabled = $user->block[$block->module][$block->delta];
+        //print_R($user);
+        if ($user->uid && isset($user->data['block'][$block->module][$block->delta])) {
+          $enabled = $user->data['block'][$block->module][$block->delta];
         }
         else {
           $enabled = ($block->custom == 1);

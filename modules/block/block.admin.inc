@@ -339,6 +339,7 @@ function block_box_delete(&$form_state, $bid = 0) {
 function block_box_delete_submit($form, &$form_state) {
   db_query('DELETE FROM {boxes} WHERE bid = %d', $form_state['values']['bid']);
   db_query("DELETE FROM {blocks} WHERE module = 'block' AND delta = '%s'", $form_state['values']['bid']);
+  db_query("DELETE FROM {blocks_roles} WHERE module = 'block' AND delta = '%s'", $form_state['values']['bid']);
   drupal_set_message(t('The block %name has been removed.', array('%name' => $form_state['values']['info'])));
   cache_clear_all();
   $form_state['redirect'] = 'admin/build/block';
