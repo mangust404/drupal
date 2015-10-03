@@ -2207,22 +2207,37 @@ class DrupalWebTestCase extends DrupalTestCase {
             break;
           case 'select':
             $new_value = $edit[$name];
-            $index = 0;
-            $key = preg_replace('/\[\]$/', '', $name);
             $options = $this->getAllOptions($element);
-            foreach ($options as $option) {
-              if (is_array($new_value)) {
-                $option_value= (string)$option['value'];
-                if (in_array($option_value, $new_value)) {
-                  $post[$key . '[' . $index++ . ']'] = $option_value;
-                  $done = TRUE;
-                  unset($edit[$name]);
+            if (is_array($new_value)) {
+              // Multiple select box.
+              if (!empty($new_value)) {
+                $index = 0;
+                $key = preg_replace('/\[\]$/', '', $name);
+                foreach ($options as $option) {
+                  $option_value = (string) $option['value'];
+                  if (in_array($option_value, $new_value)) {
+                    $post[$key . '[' . $index++ . ']'] = $option_value;
+                    $done = TRUE;
+                    unset($edit[$name]);
+                  }
                 }
               }
-              elseif ($new_value == $option['value']) {
-                $post[$name] = $new_value;
-                unset($edit[$name]);
+              else {
+                // No options selected: do not include any POST data for the
+                // element.
                 $done = TRUE;
+                unset($edit[$name]);
+              }
+            }
+            else {
+              // Single select box.
+              foreach ($options as $option) {
+                if ($new_value == $option['value']) {
+                  $post[$name] = $new_value;
+                  unset($edit[$name]);
+                  $done = TRUE;
+                  break;
+                }
               }
             }
             break;
