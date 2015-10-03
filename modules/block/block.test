@@ -459,7 +459,7 @@ class NewDefaultThemeBlocks extends DrupalWebTestCase {
     // Ensure no other theme's blocks are in the block table yet.
     $themes = array();
     $themes['default'] = variable_get('theme_default', 'garland');
-    if ($admin_theme = variable_get('admin_theme')) {
+    if ($admin_theme = variable_get('admin_theme', 'minnelli')) {
       $themes['admin'] = $admin_theme;
     }
     $count = db_result(db_query('SELECT COUNT(*) FROM {blocks} WHERE theme NOT IN (' . db_placeholders($themes, 'varchar') . ')', $themes));
