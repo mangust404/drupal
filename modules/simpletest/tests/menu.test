@@ -1354,7 +1354,7 @@ class MenuBreadcrumbTestCase extends MenuWebTestCase {
     // Verify breadcrumbs on user and user/%.
     // We need to log back in and out below, and cannot simply grant the
     // 'administer users' permission, since user_page() makes your head explode.
-    db_query("UPDATE {permission} SET perm = '%s' WHERE rid = %d", 'access content, access user profiles', DRUPAL_ANONYMOUS_RID);
+    user_role_change_permissions(DRUPAL_ANONYMOUS_RID, array('access content' => TRUE, 'access user profiles' => TRUE));
     $this->drupalLogout();
 
     // Verify breadcrumb on front page.

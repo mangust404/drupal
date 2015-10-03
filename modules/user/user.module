@@ -1862,6 +1862,79 @@ function user_roles($membersonly = FALSE, $permission = NULL) {
 }
 
 /**
+ * Change permissions for a user role.
+ * Backport from D7.
+ *
+ * This function may be used to grant and revoke multiple permissions at once.
+ * For example, when a form exposes checkboxes to configure permissions for a
+ * role, the form submit handler may directly pass the submitted values for the
+ * checkboxes form element to this function.
+ *
+ * @param $rid
+ *   The ID of a user role to alter.
+ * @param $permissions
+ *   An associative array, where the key holds the permission name and the value
+ *   determines whether to grant or revoke that permission. Any value that
+ *   evaluates to TRUE will cause the permission to be granted. Any value that
+ *   evaluates to FALSE will cause the permission to be revoked.
+ *   @code
+ *     array(
+ *       'administer nodes' => 0,                // Revoke 'administer nodes'
+ *       'administer blocks' => FALSE,           // Revoke 'administer blocks'
+ *       'access user profiles' => 1,            // Grant 'access user profiles'
+ *       'access content' => TRUE,               // Grant 'access content'
+ *       'access comments' => 'access comments', // Grant 'access comments'
+ *     )
+ *   @endcode
+ *   Existing permissions are not changed, unless specified in $permissions.
+ *
+ */
+function user_role_change_permissions($rid, array $permissions = array()) {
+  $current_perms = db_fetch_array(db_query("SELECT * FROM {permission} WHERE rid = %d", $rid));
+
+  if(empty($current_perms)) {
+    $current_permissions = array();
+  } else {
+    $current_permissions = explode(', ', $current_perms['perm']);
+  }
+
+  $altered = FALSE;
+
+  // Grant new permissions for the role.
+  $grant = array_filter($permissions);
+  if (!empty($grant)) {
+    foreach (array_keys($grant) as $perm) {
+      if (!in_array($perm, $current_permissions)) {
+        $current_permissions[] = $perm;
+        $altered = TRUE;
+      }
+    }
+  }
+  // Revoke permissions for the role.
+  $revoke = array_diff_assoc($permissions, $grant);
+  if (!empty($revoke)) {
+    foreach (array_keys($revoke) as $perm) {
+      if (($index = array_search($perm, $current_permissions)) !== FALSE) {
+        unset($current_permissions[$index]);
+        $altered = TRUE;
+      }
+    }
+  }
+
+  $current_permissions = array_filter($current_permissions);
+  sort($current_permissions);
+
+  if (empty($current_perms)) {
+    // Create a new permission for the role
+    db_query("INSERT INTO {permission} (rid, perm) VALUES (%d, '%s')", $rid, implode(', ', $current_permissions));
+  }
+  else if ($altered) {
+    // Remove empty permissions and sort alphabetically
+    db_query("UPDATE {permission} SET perm = '%s' WHERE pid = %d", implode(', ', $current_permissions), $current_perms['pid']);
+  }
+}
+
+/**
  * Implementation of hook_user_operations().
  */
 function user_user_operations($form_state = array()) {

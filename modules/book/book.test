@@ -293,7 +293,7 @@ class BookTestCase extends DrupalWebTestCase {
     // Now grant anonymous users permission to view the printer-friendly
     // version and verify that node access restrictions still prevent them from
     // seeing it.
-    db_query("UPDATE {permission} SET perm = '%s' WHERE rid = %d", 'access content, access printer-friendly version', DRUPAL_ANONYMOUS_RID);
+    user_role_change_permissions(DRUPAL_ANONYMOUS_RID, array('access content' => TRUE, 'access printer-friendly version' => TRUE));
     $this->drupalGet('book/export/html/' . $this->book->nid);
     $this->assertResponse('403', 'Anonymous user properly forbidden from seeing the printer-friendly version when denied by node access.');
   }
