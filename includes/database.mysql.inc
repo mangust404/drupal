@@ -126,22 +126,22 @@ function _db_query($query, $debug = 0) {
     print '<p>query: '. $query .'<br />error:'. mysql_error($active_db) .'</p>';
   }
 
+  // Determine if database query raises a warnings with old mysql driver.
   if (!mysql_errno($active_db)) {
+    // If log level includes E_WARNING then trigger an error in the same way
+    // how pgsql driver does and we can catch the error for testing purposes.
     if (error_reporting() & E_WARNING) {
-      // Determining if database query raises a warning with old mysql driver
-      // require to make a database query so mysql_affected_rows will show
-      // affected rows from "show warnings" query. If E_WARNING error reporting
-      // level is enabled store each real query affected rows in a static variable.
-      // It will do unnecessary queries on a developement but it should work as usual
-      // on the production environments where E_WARNING should be disabled.
+      // We should make another database query so calling of db_affected_rows()
+      // will show numbers from the query "SELECT @@warning_count".
+      // To prevent that we should "remember" the last query count here.
       db_affected_rows(mysql_affected_rows($active_db));
 
       if ($warning_result = mysql_query("SELECT @@warning_count")) {
         $warning_count = mysql_fetch_row($warning_result);
         if ($warning_count[0] > 0) {
-          if ($warnings_result = mysql_query($active_db, "SHOW WARNINGS")) {
+          if ($warnings_result = mysql_query("SHOW WARNINGS", $active_db)) {
             $row = mysql_fetch_row($warnings_result);
-            trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_WARNING);
+            trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_USER_WARNING);
           }
         }
       }

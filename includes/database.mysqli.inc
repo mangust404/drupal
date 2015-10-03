@@ -125,11 +125,14 @@ function _db_query($query, $debug = 0) {
     print '<p>query: '. $query .'<br />error:'. mysqli_error($active_db) .'</p>';
   }
 
+  // Determine if database query raises a warnings.
   if (!mysqli_errno($active_db)) {
+    // If log level includes E_WARNING then trigger an error in the same way
+    // how pgsql driver does and we can catch the error for testing purposes.
     if (error_reporting() & E_WARNING && mysqli_warning_count($active_db) > 0) {
       if ($warnings_result = mysqli_query($active_db, "SHOW WARNINGS")) {
           $row = mysqli_fetch_row($warnings_result);
-          trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_WARNING);
+          trigger_error(check_plain(sprintf("%s (%d): %s\n", $row[0], $row[1], $row[2]) . "\nquery: ". $query), E_USER_WARNING);
       }
     }
     
