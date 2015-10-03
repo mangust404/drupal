@@ -731,6 +731,38 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
   }
 
   /**
+   * Tests adding a file stylesheet with D6 compatibility.
+   */
+  function testAddFileD6Compat() {
+    $path = drupal_get_path('module', 'simpletest') . '/simpletest.css';
+    $expected = array('/' . $path);
+
+    drupal_add_css($path, 'module', 'all', TRUE);
+    $styles = drupal_get_css();
+    // Stylesheet URL may be the href of a LINK tag or in an @import statement
+    // of a STYLE tag.
+    if (preg_match_all('/(href="|url\(")((\/|' . preg_quote($GLOBALS['base_url'] . '/', '/') . ')?([^?]+))\?/', $styles, $matches)) {
+      $result = $matches[2];
+    }
+    else {
+      $result = array();
+    }
+    $this->assertEqual($result, $expected, 'Styles was properly added.');
+
+    // Test adding styles without preprocessing
+    drupal_static_reset('drupal_add_css');
+    drupal_add_css($path, 'module', 'all', FALSE);
+    $styles = drupal_get_css();
+    if (preg_match_all('/(href="|url\(")((\/|' . preg_quote($GLOBALS['base_url'] . '/', '/') . ')?([^?]+))\?/', $styles, $matches)) {
+      $result = $matches[2];
+    }
+    else {
+      $result = array();
+    }
+    $this->assertEqual($result, $expected, 'Styles without preprocess was properly added.');
+  }
+
+  /**
    * Tests adding an external stylesheet.
    */
   function testAddExternal() {

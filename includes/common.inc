@@ -2414,6 +2414,9 @@ function drupal_add_css($data = NULL, $options = NULL) {
         $options['group'] = CSS_THEME;
         $options['every_page'] = TRUE;
       }
+      if($options['type'] == 'module') {
+        $options['type'] = 'file';
+      }
     }
   }
   else {
@@ -2925,7 +2928,7 @@ function drupal_pre_render_styles($elements) {
             // The dummy query string needs to be added to the URL to control
             // browser-caching.
             $query_string_separator = (strpos($item['data'], '?') !== FALSE) ? '&' : '?';
-            $element['#attributes']['href'] = $item['data'] . $query_string_separator . $query_string;
+            $element['#attributes']['href'] = url($item['data']) . $query_string_separator . $query_string;
             $element['#attributes']['media'] = $item['media'];
             $element['#browsers'] = $group['browsers'];
             $elements[] = $element;
