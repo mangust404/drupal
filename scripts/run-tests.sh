@@ -526,7 +526,7 @@ function simpletest_script_reporter_init() {
 
   // Tell the user about what tests are to be run.
   if ($args['all']) {
-    echo "All tests will run.\n\n";
+    echo "All tests will run.\n";
   }
   else {
     echo "Tests to be run:\n";
@@ -534,10 +534,11 @@ function simpletest_script_reporter_init() {
       $info = call_user_func(array($class_name, 'getInfo'));
       echo " - " . $info['name'] . ' (' . $class_name . ')' . "\n";
     }
-    echo "\n";
-    echo "Database type: " . $db_type . "\n";
-    echo "\n";
   }
+  echo "\n";
+  echo "Database type: " . $db_type . "\n";
+  echo "URL: " . $args['url'] . "\n";
+  echo "\n";
 
   echo "Test run started: " . format_date($_SERVER['REQUEST_TIME'], 'long') . "\n";
   timer_start('run-tests');
