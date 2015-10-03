@@ -156,7 +156,21 @@ function _book_outline_access($node) {
  * Menu item access callback - determine if the user can remove nodes from the outline.
  */
 function _book_outline_remove_access($node) {
-  return isset($node->book) && ($node->book['bid'] != $node->nid) && _book_outline_access($node);
+  return _book_node_is_removable($node) && _book_outline_access($node);
+}
+
+/**
+ * Determines if a node can be removed from the book.
+ * Backport from D7.
+ *
+ * A node can be removed from a book if it is actually in a book and it either
+ * is not a top-level page or is a top-level page with no children.
+ *
+ * @param $node
+ *   The node to remove from the outline.
+ */
+function _book_node_is_removable($node) {
+  return (!empty($node->book['bid']) && (($node->book['bid'] != $node->nid) || !$node->book['has_children']));
 }
 
 /**
@@ -267,6 +281,7 @@ function book_get_books() {
       while ($link = db_fetch_array($result2)) {
         $link['href'] = $link['link_path'];
         $link['options'] = unserialize($link['options']);
+        $link['access'] = TRUE;
         $all_books[$link['bid']] = $link;
       }
     }
@@ -556,7 +571,8 @@ function book_prev($book_link) {
     // The previous page in the book may be a child of the previous visible link.
     if ($prev['depth'] == $book_link['depth'] && $prev['has_children']) {
       // The subtree will have only one link at the top level - get its data.
-      $data = array_shift(book_menu_subtree_data($prev));
+      $subtree = book_menu_subtree_data($prev);
+      $data = array_shift($subtree);
       // The link of interest is the last child - iterate to find the deepest one.
       while ($data['below']) {
         $data = end($data['below']);

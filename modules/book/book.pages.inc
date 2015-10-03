@@ -140,7 +140,7 @@ function book_outline_form(&$form_state, $node) {
   $form['remove'] = array(
     '#type' => 'submit',
     '#value' => t('Remove from book outline'),
-    '#access' => $node->nid != $node->book['bid'] && $node->book['bid'],
+    '#access' => _book_node_is_removable($node),
     '#weight' => 20,
     '#submit' => array('book_remove_button_submit'),
   );
@@ -216,7 +216,7 @@ function book_remove_form(&$form_state, $node) {
  */
 function book_remove_form_submit($form, &$form_state) {
   $node = $form['#node'];
-  if ($node->nid != $node->book['bid']) {
+  if (_book_node_is_removable($node)) {
     // Only allowed when this is not a book (top-level page).
     menu_link_delete($node->book['mlid']);
     db_query('DELETE FROM {book} WHERE nid = %d', $node->nid);
