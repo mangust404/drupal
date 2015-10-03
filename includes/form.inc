@@ -509,6 +509,14 @@ function drupal_retrieve_form($form_id, &$form_state) {
 
   array_unshift($args, NULL);
   $args[0] = &$form_state;
+  // Ensure that all arguments will be passed to form function
+  if(!empty($form_state['build_info']['args'])) {
+    foreach($form_state['build_info']['args'] as $key => $arg) {
+      if(!isset($args[$key + 1])) {
+        $args[$key + 1] = $arg;
+      }
+    }
+  }
 
   // If $callback was returned by a hook_forms() implementation, call it.
   // Otherwise, call the function named after the form id.
