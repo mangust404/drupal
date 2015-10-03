@@ -735,7 +735,7 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
    */
   function testAddFileD6Compat() {
     $path = drupal_get_path('module', 'simpletest') . '/simpletest.css';
-    $expected = array('/' . $path);
+    $expected = array(base_path() . $path);
 
     drupal_add_css($path, 'module', 'all', TRUE);
     $styles = drupal_get_css();

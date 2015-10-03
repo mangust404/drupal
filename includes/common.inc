@@ -2408,6 +2408,10 @@ function drupal_add_css($data = NULL, $options = NULL) {
       }
       if(isset($args[3])) {
         $options['preprocess'] = $args[3];
+        if(!$options['preprocess'] && strpos($data, '://') === FALSE && $data{0} != '/') {
+          // D6 modules may add files with preprocess = FALSE and don't provide valid url.
+          $data = base_path() . $data;
+        }
       }
 
       if($options['type'] == 'theme') {
@@ -2928,7 +2932,7 @@ function drupal_pre_render_styles($elements) {
             // The dummy query string needs to be added to the URL to control
             // browser-caching.
             $query_string_separator = (strpos($item['data'], '?') !== FALSE) ? '&' : '?';
-            $element['#attributes']['href'] = url($item['data']) . $query_string_separator . $query_string;
+            $element['#attributes']['href'] = $item['data'] . $query_string_separator . $query_string;
             $element['#attributes']['media'] = $item['media'];
             $element['#browsers'] = $group['browsers'];
             $elements[] = $element;
