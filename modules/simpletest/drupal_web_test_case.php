@@ -769,11 +769,19 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   A node object matching $title.
    */
   function drupalGetNodeByTitle($title) {
-//    $nodes = node_load_multiple(array(), array('title' => $title));
-//    // Load the first node returned from the database.
-//    $returned_node = reset($nodes);
-//    return $returned_node;
-    return node_load(array('title' => $title));
+    // Since D6 doesn't support node_load_multiple load nodes into array here
+    $nodes = array();
+    $r = db_query("SELECT nid FROM {node} WHERE title = '%s'", $title);
+    while ($ar = db_fetch_array($r)) {
+      // Nodes from different tests shouldn't interfere with node_load()
+      // static cache.
+      $nodes[] = node_load($ar['nid'], FALSE, TRUE);
+    }
+    if(count($nodes) == 1) {
+      return current($nodes);
+    } else {
+      return $nodes;
+    }
   }
 
   /**
@@ -1185,6 +1193,10 @@ class DrupalWebTestCase extends DrupalTestCase {
     // environment. (Drupal 6)
     $this->pass(t('Starting run with db_prefix %prefix', array('%prefix' => $db_prefix_new)), 'System');
 
+    // Postgres sometimes show "Query failed: ERROR: tuple concurrently updated"
+    // when --concurrency is enabled.
+    lock_acquire('drupal_install_system');
+
 //    db_update('simpletest_test_id')
 //      ->fields(array('last_prefix' => $db_prefix_new))
 //      ->condition('test_id', $this->testId)
@@ -1192,6 +1204,8 @@ class DrupalWebTestCase extends DrupalTestCase {
     db_query("UPDATE {simpletest_test_id}
               SET last_prefix = '%s'
               WHERE test_id = %d", $db_prefix_new, $this->testId);
+
+    $original_db_prefix = $db_prefix;
     $db_prefix = $db_prefix_new;
 
     // Create test directory ahead of installation so fatal errors and debug
@@ -1207,8 +1221,13 @@ class DrupalWebTestCase extends DrupalTestCase {
 
 //    include_once DRUPAL_ROOT . '/includes/install.inc';
     include_once './includes/install.inc';
+
     drupal_install_system();
 
+    // Switch to origin database and release install lock
+    $db_prefix = $original_db_prefix;
+    lock_release('drupal_install_system');
+    $db_prefix = $db_prefix_new;
 //    $this->preloadRegistry();
 
     // Set the 'simpletest_parent_profile' variable to add the parent profile's
