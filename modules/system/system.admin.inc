@@ -1030,11 +1030,11 @@ function system_modules_uninstall($form_state = NULL) {
   include_once './includes/install.inc';
 
   // Display the confirm form if any modules have been submitted.
-  if (isset($form_state) && $confirm_form = system_modules_uninstall_confirm_form($form_state['storage'])) {
+  if (!empty($form_state['storage']) && ($confirm_form = system_modules_uninstall_confirm_form($form_state['storage']))) {
     return $confirm_form;
   }
 
-  $form = array();
+  $form = array('#cache' => TRUE);
 
   // Pull all disabled modules from the system table.
   $disabled_modules = db_query("SELECT name, filename, info FROM {system} WHERE type = 'module' AND status = 0 AND schema_version > %d ORDER BY name", SCHEMA_UNINSTALLED);
@@ -1143,6 +1143,7 @@ function system_modules_uninstall_submit($form, &$form_state) {
     $form_state['redirect'] = 'admin/build/modules/uninstall';
   }
   else {
+    $form_state['rebuild'] = TRUE;
     $form_state['storage'] = $form_state['values'];
   }
 }

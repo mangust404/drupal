@@ -291,7 +291,7 @@ class ModuleUninstallTestCase extends DrupalWebTestCase {
   }
 
   function setUp() {
-    parent::setUp('module_test', 'user');
+    parent::setUp('module_test', 'user', 'book');
   }
 
   /**
@@ -306,5 +306,37 @@ class ModuleUninstallTestCase extends DrupalWebTestCase {
     // Are the perms defined by module_test removed from {role_permission}.
     $count = db_result(db_query("SELECT COUNT(rid) FROM {permission} WHERE perm = '%s'", 'module_test perm'));
     $this->assertEqual(0, $count, 'Permissions were all removed.');
+  }
+
+  /**
+   * Test Modules uninstall and database cleanup.
+   */
+  function testModuleUninstallAndCleanup() {
+    $this->assertTrue(module_exists('book'), 'Book module is enabled');
+    $this->assertTrue(db_table_exists('book'), 'Book table exists in database');
+
+    $big_user = $this->drupalCreateUser(array('administer site configuration'));
+    $this->drupalLogin($big_user);
+    // Uninstall book module
+    $this->drupalPost('admin/build/modules', array('status[book]' => FALSE), t('Save configuration'));
+
+    module_list(TRUE, FALSE);
+    $this->assertFalse(module_exists('book'), 'Book module is disabled');
+    $this->assertTrue(db_table_exists('book'), 'Book table exists in database');
+
+    // Cleanup book module
+    $this->drupalPost('admin/build/modules/uninstall', array('uninstall[book]' => TRUE), t('Uninstall'));
+
+    $this->assertText('Confirm uninstall');
+    $this->assertText('The following modules will be completely uninstalled from your site, and all data from these modules will be lost!');
+    $this->drupalPost(NULL, array(), t('Uninstall'));
+
+    $this->assertText('The selected modules have been uninstalled.');
+
+    $this->assertFalse(module_exists('book'), 'Book module is disabled');
+    $this->assertFalse(db_table_exists('book'), 'Book table doesn\'t exists in database');
+
+    // Bring back book module so simpletest can correctly cleanup test environment.
+    module_enable(array('book'));
   }
 }
