@@ -278,13 +278,13 @@ function user_save($account, $array = array(), $category = 'account') {
 
     // Delete a blocked user's sessions to kick them if they are online.
     if (isset($array['status']) && $array['status'] == 0) {
-      sess_destroy_uid($account->uid);
+      drupal_session_destroy_uid($account->uid);
     }
 
     // If the password changed, delete all open sessions and recreate
     // the current one.
     if (!empty($array['pass'])) {
-      sess_destroy_uid($account->uid);
+      drupal_session_destroy_uid($account->uid);
       if ($account->uid == $GLOBALS['user']->uid) {
         drupal_session_regenerate();
       }
@@ -1724,7 +1724,7 @@ function _user_edit_submit($uid, &$edit) {
  */
 function user_delete($edit, $uid) {
   $account = user_load(array('uid' => $uid));
-  sess_destroy_uid($uid);
+  drupal_session_destroy_uid($uid);
   _user_mail_notify('status_deleted', $account);
   db_query('DELETE FROM {users} WHERE uid = %d', $uid);
   db_query('DELETE FROM {users_roles} WHERE uid = %d', $uid);
@@ -2467,7 +2467,7 @@ function user_block_user_action(&$object, $context = array()) {
     $uid = $user->uid;
   }
   db_query("UPDATE {users} SET status = 0 WHERE uid = %d", $uid);
-  sess_destroy_uid($uid);
+  drupal_session_destroy_uid($uid);
   watchdog('action', 'Blocked user %name.', array('%name' => check_plain($user->name)));
 }
 
