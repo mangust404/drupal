@@ -2673,7 +2673,8 @@ class DrupalWebTestCase extends DrupalTestCase {
     foreach ($captured_emails as $message) {
       foreach ($filter as $key => $value) {
 //        if (!isset($message[$key]) || $message[$key] != $value) {
-        if (!isset($message['params'][$key]) || $message['params'][$key] != $value) {
+        if ((!isset($message['params'][$key]) || $message['params'][$key] != $value) &&
+            (!isset($message[$key]) || $message[$key] != $value) ) {
           continue 2;
         }
       }
