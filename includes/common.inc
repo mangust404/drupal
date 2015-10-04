@@ -1241,6 +1241,10 @@ function t($string, $args = array(), $langcode = NULL, $context = '') {
  *   there is an input error (such as passing in an array instead of a string).
  */
 function valid_email_address($mail) {
+  if(function_exists('filter_var')) {
+    return (bool)filter_var($mail, FILTER_VALIDATE_EMAIL);
+  }
+
   $user = '[a-zA-Z0-9_\-\.\+\^!#\$%&*+\/\=\?\`\|\{\}~\']+';
   $domain = '(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.?)+';
   $ipv4 = '[0-9]{1,3}(\.[0-9]{1,3}){3}';
