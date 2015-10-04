@@ -80,6 +80,20 @@ function contact_admin_edit($form_state = array(), $op, $contact = NULL) {
 function contact_admin_edit_validate($form, &$form_state) {
   if (empty($form_state['values']['category'])) {
     form_set_error('category', t('You must enter a category.'));
+  } else {
+    // When creating a new contact form, or renaming the category on an existing
+    // contact form, make sure that the given category is unique.
+    $category = $form_state['values']['category'];
+    $query = "SELECT cid FROM {contact} WHERE category = '%s'";
+    $args = array($category);
+    if (!empty($form_state['values']['cid'])) {
+      $query .= " AND cid != %d";
+      $args[] = $form_state['values']['cid'];
+    }
+    array_unshift($args, $query);
+    if (db_result(call_user_func_array('db_query', $args))) {
+      form_set_error('category', t('A contact form with category %category already exists.', array('%category' => $category)));
+    }    
   }
   if (empty($form_state['values']['recipients'])) {
     form_set_error('recipients', t('You must enter one or more recipients.'));

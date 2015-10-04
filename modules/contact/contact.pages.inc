@@ -14,6 +14,7 @@ function contact_site_page() {
 
   if (!flood_is_allowed('contact', variable_get('contact_hourly_threshold', 3))) {
     $output = t("You cannot send more than %number messages per hour. Please try again later.", array('%number' => variable_get('contact_hourly_threshold', 3)));
+    drupal_set_header($_SERVER['SERVER_PROTOCOL'] .' 403 Forbidden');
   }
   else {
     $output = drupal_get_form('contact_mail_page');
