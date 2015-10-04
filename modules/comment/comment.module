@@ -359,18 +359,31 @@ function comment_new_page_count($num_comments, $new_replies, $node) {
       $count = $num_comments - $new_replies;
     }
     else {
+      // Postgres and MySQL have different string sorting approach.
+      // Here is the difference how ["01/", "01.00/", "01.01/"] will be sorted:
+      // In Postgres (correct):
+      //   - 01/
+      //   - 01.00/
+      //   - 01.01/
+      // In MySQL (buggy):
+      //   - 01.00/
+      //   - 01.01/
+      //   - 01/
+      // To make a correct sorting without database-specific workarounds 
+      // we should remove trailing slash.
+
       // Threaded comments. See the documentation for comment_render().
       if ($order == COMMENT_ORDER_NEWEST_FIRST) {
         // Newest first: find the last thread with new comment
-        $result = db_query('SELECT thread FROM (SELECT thread FROM {comments} WHERE nid = %d AND status = 0 ORDER BY timestamp DESC LIMIT %d) AS thread ORDER BY thread DESC LIMIT 1', $node->nid, $new_replies);
-        $thread = db_result($result);
-        $result_count = db_query("SELECT COUNT(*) FROM {comments} WHERE nid = %d AND status = 0 AND thread > '". $thread ."'", $node->nid);
+        $result = db_query('SELECT thread FROM (SELECT thread FROM {comments} WHERE nid = %d AND status = 0 ORDER BY timestamp DESC, cid DESC LIMIT %d) AS thread ORDER BY SUBSTRING(thread, 1, (LENGTH(thread) - 1)) DESC LIMIT 1', $node->nid, $new_replies);
+        $thread = substr(db_result($result), 0, -1);
+        $result_count = db_query("SELECT COUNT(*) FROM {comments} WHERE nid = %d AND status = 0 AND SUBSTRING(thread, 1, (LENGTH(thread) - 1)) >= '%s'", $node->nid, $thread, $thread);
       }
       else {
         // Oldest first: find the first thread with new comment
-        $result = db_query('SELECT thread FROM (SELECT thread FROM {comments} WHERE nid = %d AND status = 0 ORDER BY timestamp DESC LIMIT %d) AS thread ORDER BY SUBSTRING(thread, 1, (LENGTH(thread) - 1)) LIMIT 1', $node->nid, $new_replies);
+        $result = db_query('SELECT thread FROM (SELECT thread FROM {comments} WHERE nid = %d AND status = 0 ORDER BY timestamp DESC, cid DESC LIMIT %d) AS thread ORDER BY SUBSTRING(thread, 1, (LENGTH(thread) - 1)) ASC, LENGTH(thread) DESC LIMIT 1', $node->nid, $new_replies);
         $thread = substr(db_result($result), 0, -1);
-        $result_count = db_query("SELECT COUNT(*) FROM {comments} WHERE nid = %d AND status = 0 AND SUBSTRING(thread, 1, (LENGTH(thread) - 1)) < '". $thread ."'", $node->nid);
+        $result_count = db_query("SELECT COUNT(*) FROM {comments} WHERE nid = %d AND status = 0 AND SUBSTRING(thread, 1, (LENGTH(thread) - 1)) < '%s'", $node->nid, $thread);
       }
       $count = db_result($result_count);
     }
@@ -593,7 +606,7 @@ function comment_form_alter(&$form, $form_state, $form_id) {
 function comment_nodeapi(&$node, $op, $arg = 0) {
   switch ($op) {
     case 'load':
-      return db_fetch_array(db_query("SELECT last_comment_timestamp, last_comment_name, comment_count FROM {node_comment_statistics} WHERE nid = %d", $node->nid));
+      return db_fetch_array(db_query("SELECT last_comment_timestamp, last_comment_name, last_comment_uid, comment_count FROM {node_comment_statistics} WHERE nid = %d", $node->nid));
       break;
 
     case 'prepare':
@@ -714,6 +727,10 @@ function comment_save($edit) {
           // This is a comment with no parent comment (depth 0): we start
           // by retrieving the maximum thread level.
           $max = db_result(db_query('SELECT MAX(thread) FROM {comments} WHERE nid = %d', $edit['nid']));
+
+          // In Postgres MAX() will return also the longest thread so trim 
+          // the first part of the max thread
+          list($max, ) = explode('.', $max);
 
           // Strip the "/" from the end of the thread.
           $max = rtrim($max, '/');
@@ -1201,7 +1218,7 @@ function comment_validate($edit) {
     $node = node_load($edit['nid']);
     if (variable_get('comment_anonymous_'. $node->type, COMMENT_ANONYMOUS_MAYNOT_CONTACT) > COMMENT_ANONYMOUS_MAYNOT_CONTACT) {
       if ($edit['name']) {
-        $taken = db_result(db_query("SELECT COUNT(uid) FROM {users} WHERE LOWER(name) = '%s'", $edit['name']));
+        $taken = db_result(db_query("SELECT COUNT(uid) FROM {users} WHERE LOWER(name) = '%s'", mb_strtolower($edit['name'])));
 
         if ($taken != 0) {
           form_set_error('name', t('The name you used belongs to a registered user.'));
@@ -1450,6 +1467,13 @@ function comment_form_add_preview($form, &$form_state) {
     if (!empty($account)) {
       $comment->uid = $account->uid;
       $comment->name = check_plain($account->name);
+      if(!empty($account->picture)) {
+        $comment->picture = $account->picture;
+      }
+      if(!empty($account->signature)) {
+        $comment->signature = $account->signature;
+        $comment->signature_format = $account->signature_format;
+      }
     }
     elseif (empty($comment->name)) {
       $comment->name = variable_get('anonymous', t('Anonymous'));
@@ -2072,6 +2096,7 @@ function comment_publish_action($comment, $context = array()) {
   if (isset($comment->cid)) {
     $cid = $comment->cid;
     $subject = $comment->subject;
+    $comment->status = COMMENT_PUBLISHED;
   }
   else {
     $cid = $context['cid'];
@@ -2095,6 +2120,7 @@ function comment_unpublish_action($comment, $context = array()) {
   if (isset($comment->cid)) {
     $cid = $comment->cid;
     $subject = $comment->subject;
+    $comment->status = COMMENT_NOT_PUBLISHED;
   }
   else {
     $cid = $context['cid'];

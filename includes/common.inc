@@ -558,7 +558,7 @@ function drupal_encode_path($path) {
 function drupal_goto($path = '', $options = array(), $http_response_code = 302) {
       // D6 Compat:  $path = '', $query = NULL, $fragment = NULL, $http_response_code = 302
 
-  if(is_string($options)) {
+  if(is_string($options) || is_string($http_response_code)) {
     $options = array('query' => $options);
     $args = func_get_args();
     if(!empty($args[2])) {
@@ -566,6 +566,8 @@ function drupal_goto($path = '', $options = array(), $http_response_code = 302) 
     }
     if(!empty($args[3])) {
       $http_response_code = $args[3];
+    } else {
+      $http_response_code = 302;
     }
   }
   // A destination in $_GET always overrides the function arguments.
