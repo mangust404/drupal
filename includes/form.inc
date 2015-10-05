@@ -2960,6 +2960,39 @@ function _form_set_class(&$element, $class = array()) {
 }
 
 /**
+ * Form element validation handler for integer elements.
+ * Backport from D7.
+ */
+function element_validate_integer($element, &$form_state) {
+  $value = $element['#value'];
+  if ($value !== '' && (!is_numeric($value) || intval($value) != $value)) {
+    form_error($element, t('%name must be an integer.', array('%name' => $element['#title'])));
+  }
+}
+
+/**
+ * Form element validation handler for integer elements that must be positive.
+ * Backport from D7.
+ */
+function element_validate_integer_positive($element, &$form_state) {
+  $value = $element['#value'];
+  if ($value !== '' && (!is_numeric($value) || intval($value) != $value || $value <= 0)) {
+    form_error($element, t('%name must be a positive integer.', array('%name' => $element['#title'])));
+  }
+}
+
+/**
+ * Form element validation handler for number elements.
+ * Backport from D7.
+ */
+function element_validate_number($element, &$form_state) {
+  $value = $element['#value'];
+  if ($value != '' && !is_numeric($value)) {
+    form_error($element, t('%name must be a number.', array('%name' => $element['#title'])));
+  }
+}
+
+/**
  * Prepare an HTML ID attribute string for a form item.
  *
  * Remove invalid characters and guarantee uniqueness.
