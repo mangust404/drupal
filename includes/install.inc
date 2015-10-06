@@ -306,51 +306,13 @@ function drupal_verify_profile($profile, $locale) {
 
 /**
  * Calls the install function and updates the system table for a given list of
- * modules.
+ * modules. Backward compatibility with D6.
  *
  * @param module_list
  *   The modules to install.
  */
 function drupal_install_modules($module_list = array()) {
-  $files = module_rebuild_cache();
-  $module_list = array_flip(array_values($module_list));
-  do {
-    $moved = FALSE;
-    foreach ($module_list as $module => $weight) {
-      $file = $files[$module];
-      if (isset($file->info['dependencies']) && is_array($file->info['dependencies'])) {
-        foreach ($file->info['dependencies'] as $dependency) {
-          if (isset($module_list[$dependency]) && $module_list[$module] < $module_list[$dependency] +1) {
-            $module_list[$module] = $module_list[$dependency] +1;
-            $moved = TRUE;
-          }
-        }
-      }
-    }
-  } while ($moved);
-  asort($module_list);
-  $module_list = array_keys($module_list);
-
-  array_filter($module_list, '_drupal_install_module');
-
   module_enable($module_list);
-}
-
-/**
- * Callback to install an individual profile module.
- *
- * Used during installation to install modules one at a time and then
- * enable them, or to install a number of modules at one time
- * from admin/build/modules.
- */
-function _drupal_install_module($module) {
-  if (drupal_get_installed_schema_version($module, TRUE) == SCHEMA_UNINSTALLED) {
-    module_load_install($module);
-    module_invoke($module, 'install');
-    $versions = drupal_get_schema_versions($module);
-    drupal_set_installed_schema_version($module, $versions ? max($versions) : SCHEMA_INSTALLED);
-    return TRUE;
-  }
 }
 
 /**

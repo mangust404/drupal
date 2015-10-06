@@ -419,6 +419,8 @@ function module_enable($module_list, $enable_dependencies = TRUE) {
     // Only process modules that are not already enabled.
     $existing = db_fetch_object(db_query("SELECT status FROM {system} WHERE type = '%s' AND name = '%s'", 'module', $module));
     if ($existing->status == 0) {
+      $installed_schema_version = drupal_get_installed_schema_version($module, TRUE);
+
       // Load the module's code.
       drupal_load('module', $module);
       module_load_install($module);
@@ -440,7 +442,7 @@ function module_enable($module_list, $enable_dependencies = TRUE) {
       drupal_theme_rebuild();
 
       // Now install the module if necessary.
-      if (drupal_get_installed_schema_version($module, TRUE) == SCHEMA_UNINSTALLED) {
+      if ($installed_schema_version == SCHEMA_UNINSTALLED) {
         // D6 modules should not install schema automatically. 
         // Schema installation is being invoked from hook_install 
         //drupal_install_schema($module);
@@ -463,7 +465,6 @@ function module_enable($module_list, $enable_dependencies = TRUE) {
         $modules_installed[] = $module;
         watchdog('system', '%module module installed.', array('%module' => $module), WATCHDOG_INFO);
       }
-
     }
   }
 

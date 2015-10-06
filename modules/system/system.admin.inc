@@ -879,7 +879,7 @@ function system_modules_submit($form, &$form_state) {
   $new_modules = array();
 
   // If we are coming from the confirm form...
-  if (!isset($form_state['storage'])) {
+  if (empty($form_state['storage'])) {
     // Merge in disabled active modules since they should be enabled.
     // They don't appear because disabled checkboxes are not submitted
     // by browsers.
@@ -908,6 +908,7 @@ function system_modules_submit($form, &$form_state) {
   // the submission yet. Store the form submission data needed later.
   if ($dependencies) {
     if (!isset($form_state['values']['confirm'])) {
+      $form_state['rebuild'] = TRUE;
       $form_state['storage'] = array($dependencies, $form_state['values']['status']);
       return;
     }
@@ -950,6 +951,7 @@ function system_modules_submit($form, &$form_state) {
       unset($new_modules[$key]);
     }
   }
+
   drupal_install_modules($new_modules);
 
   $current_module_list = module_list(TRUE, FALSE);
