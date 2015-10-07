@@ -441,6 +441,8 @@ function module_enable($module_list, $enable_dependencies = TRUE) {
       // Update the theme registry to include it.
       drupal_theme_rebuild();
 
+      $modules_enabled[] = $module;
+
       // Now install the module if necessary.
       if ($installed_schema_version == SCHEMA_UNINSTALLED) {
         // D6 modules should not install schema automatically. 
@@ -468,17 +470,6 @@ function module_enable($module_list, $enable_dependencies = TRUE) {
     }
   }
 
-  if(!empty($modules_installed)) {
-    foreach ($modules_installed as $module) {
-      // Enable the module.
-      module_invoke($module, 'enable');
-
-      // Record the fact that it was enabled.
-      $modules_enabled[] = $module;
-      watchdog('system', '%module module enabled.', array('%module' => $module), WATCHDOG_INFO);
-    }
-  }
-
   // If any modules were newly installed, invoke hook_modules_installed().
   if (!empty($modules_installed)) {
     module_invoke_all('modules_installed', $modules_installed);
@@ -486,6 +477,13 @@ function module_enable($module_list, $enable_dependencies = TRUE) {
 
   // If any modules were newly enabled, invoke hook_modules_enabled().
   if (!empty($modules_enabled)) {
+    foreach ($modules_enabled as $module) {
+      // Enable the module.
+      module_invoke($module, 'enable');
+
+      // Record the fact that it was enabled.
+      watchdog('system', '%module module enabled.', array('%module' => $module), WATCHDOG_INFO);
+    }
     module_invoke_all('modules_enabled', $modules_enabled);
   }
 
