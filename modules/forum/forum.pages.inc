@@ -18,6 +18,13 @@ function forum_page($tid = 0) {
   $forum_per_page = variable_get('forum_per_page', 25);
   $sortby = variable_get('forum_order', 1);
 
+  if($tid > 0) {
+    // Return 404 if forum was deleted
+    $term = taxonomy_get_term($tid);
+    if(empty($term)) {
+      return MENU_NOT_FOUND;
+    }
+  }
   $forums = forum_get_forums($tid);
   $parents = taxonomy_get_parents_all($tid);
   if ($tid && !in_array($tid, variable_get('forum_containers', array()))) {

@@ -216,6 +216,7 @@ function forum_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
     case 'prepare':
       if (empty($node->nid)) {
         // New topic
+        $node->taxonomy[arg(3)] = new stdClass;
         $node->taxonomy[arg(3)]->vid = $vid;
         $node->taxonomy[arg(3)]->tid = arg(3);
       }

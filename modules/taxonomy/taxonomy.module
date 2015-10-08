@@ -798,7 +798,7 @@ function taxonomy_get_parents_all($tid) {
   if ($tid) {
     $parents[] = taxonomy_get_term($tid);
     $n = 0;
-    while ($parent = taxonomy_get_parents($parents[$n]->tid)) {
+    while (isset($parents[$n]) && ($parent = taxonomy_get_parents($parents[$n]->tid))) {
       $parents = array_merge($parents, $parent);
       $n++;
     }
@@ -1042,7 +1042,7 @@ function taxonomy_get_term_by_name($name) {
  *   Results are statically cached.
  */
 function taxonomy_vocabulary_load($vid, $reset = FALSE) {
-  static $vocabularies = array();
+  $vocabularies = drupal_static('taxonomy_vocabulary_load', array());
 
   if ($reset) {
     $vocabularies = array();
