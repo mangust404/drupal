@@ -130,7 +130,8 @@ function _simpletest_format_summary_line($summary) {
     return t('@pass, @fail, and @exception', $args);
   }
   $args['@debug'] = format_plural(isset($summary['#debug']) ? $summary['#debug'] : 0, '1 debug message', '@count debug messages');
-  return t('@pass, @fail, @exception, and @debug', $args);
+  $args['@pending'] = format_plural(isset($summary['#pending']) ? $summary['#pending'] : 0, '1 pending test', '@count pending tests');
+  return t('@pass, @fail, @exception, @debug and @pending', $args);
 }
 
 /**
@@ -193,7 +194,7 @@ function _simpletest_batch_operation($test_list_init, $test_id, &$context) {
     // First iteration: initialize working values.
     $test_list = $test_list_init;
     $context['sandbox']['max'] = count($test_list);
-    $test_results = array('#pass' => 0, '#fail' => 0, '#exception' => 0, '#debug' => 0);
+    $test_results = array('#pass' => 0, '#fail' => 0, '#exception' => 0, '#debug' => 0, '#pending' => 0);
   }
   else {
     // Nth iteration: get the current values where we last stored them.

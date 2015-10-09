@@ -13,7 +13,8 @@
 
 define('SIMPLETEST_SCRIPT_COLOR_PASS', 32); // Green.
 define('SIMPLETEST_SCRIPT_COLOR_FAIL', 31); // Red.
-define('SIMPLETEST_SCRIPT_COLOR_EXCEPTION', 33); // Brown.
+define('SIMPLETEST_SCRIPT_COLOR_EXCEPTION', 33); // Yellow.
+define('SIMPLETEST_SCRIPT_COLOR_PENDING', 34); // Dark blue.
 
 // Set defaults and get overrides.
 list($args, $count) = simpletest_script_parse_args();
@@ -563,7 +564,8 @@ function simpletest_script_reporter_display_results() {
   $results_map = array(
     'pass' => 'Pass',
     'fail' => 'Fail',
-    'exception' => 'Exception'
+    'exception' => 'Exception',
+    'pending' => 'Pending'
   );
 
   if ($args['verbose']) {
@@ -673,6 +675,8 @@ function simpletest_script_color_code($status) {
       return SIMPLETEST_SCRIPT_COLOR_FAIL;
     case 'exception':
       return SIMPLETEST_SCRIPT_COLOR_EXCEPTION;
+    case 'pending':
+      return SIMPLETEST_SCRIPT_COLOR_PENDING;
   }
   return 0; // Default formatting.
 }

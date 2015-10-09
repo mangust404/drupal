@@ -54,6 +54,7 @@ abstract class DrupalTestCase {
     '#fail' => 0,
     '#exception' => 0,
     '#debug' => 0,
+    '#pending' => 0,
   );
 
   /**
@@ -151,7 +152,7 @@ abstract class DrupalTestCase {
     $db_prefix = $current_db_prefix;
     // We do not use a ternary operator here to allow a breakpoint on
     // test failure.
-    if ($status == 'pass') {
+    if ($status == 'pass' || $status == 'pending') {
       return TRUE;
     }
     else {
@@ -428,6 +429,20 @@ abstract class DrupalTestCase {
    */
   protected function fail($message = NULL, $group = 'Other') {
     return $this->assert(FALSE, $message, $group);
+  }
+
+  /**
+   * Notifies that described test case should be implemented.
+   *
+   * @param $message
+   *   The message to display along with the assertion.
+   * @param $group
+   *   The type of assertion - examples are "Browser", "PHP".
+   * @return
+   *   TRUE.
+   */
+  protected function pending($message = NULL, $group = 'Other') {
+    return $this->assert('pending', $message, $group);
   }
 
   /**

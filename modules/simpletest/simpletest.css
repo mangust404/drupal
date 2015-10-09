@@ -68,6 +68,14 @@ tr.simpletest-debug.even {
   background: #ffffff;
 }
 
+tr.simpletest-pending.odd {
+  background: #f4c471;
+}
+
+tr.simpletest-pending.even {
+  background: #f5bc42;
+}
+
 div.simpletest-image {
   display: inline;
   cursor: pointer;

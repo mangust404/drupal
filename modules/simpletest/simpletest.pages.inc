@@ -239,6 +239,7 @@ function simpletest_result_form(&$form_state, $test_id) {
     '#fail' => 0,
     '#exception' => 0,
     '#debug' => 0,
+    '#pending' => 0,
   );
 
   // Cycle through each test group.
@@ -436,6 +437,7 @@ function simpletest_result_status_image($status) {
       'fail' => theme('image', 'misc/watchdog-error.png'),
       'exception' => theme('image', 'misc/watchdog-warning.png'),
       'debug' => theme('image', 'misc/watchdog-warning.png'),
+      'pending' => theme('image', 'misc/progress.gif'),
     );
   }
   if (isset($map[$status])) {

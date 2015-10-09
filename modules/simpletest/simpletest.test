@@ -133,6 +133,8 @@ class SimpleTestFunctionalTest extends DrupalWebTestCase {
     array_key_exists(NULL, NULL);
 
     debug('Foo', 'Debug');
+
+    $this->pending('Pending message');
   }
 
   /**
@@ -165,8 +167,10 @@ class SimpleTestFunctionalTest extends DrupalWebTestCase {
 
     $this->assertAssertion("Debug: 'Foo'", 'Debug', 'Fail', 'simpletest.test', 'SimpleTestFunctionalTest->stubTest()');
 
+    $this->assertAssertion('Pending message', 'Other', 'Pending', 'simpletest.test', 'SimpleTestFunctionalTest->stubTest()');
+
 //    $this->assertEqual('6 passes, 2 fails, 2 exceptions, and 1 debug message', $this->childTestResults['summary'], 'Stub test summary is correct');
-    $this->assertEqual('8 passes, 2 fails, 2 exceptions, and 1 debug message', $this->childTestResults['summary'], 'Stub test summary is correct');
+    $this->assertEqual('8 passes, 2 fails, 2 exceptions, 1 debug message and 1 pending test', $this->childTestResults['summary'], 'Stub test summary is correct');
 
     $this->test_ids[] = $test_id = $this->getTestIdFromResults();
     $this->assertTrue($test_id, t('Found test ID in results.'));
@@ -232,8 +236,18 @@ class SimpleTestFunctionalTest extends DrupalWebTestCase {
           $assertion['line'] = $this->asText($row->td[3]);
           $assertion['function'] = $this->asText($row->td[4]);
           $ok_url = file_create_url('misc/watchdog-ok.png');
+          $pending_url = file_create_url('misc/progress.gif');
           //$ok_url = '/misc/watchdog-ok.png';
-          $assertion['status'] = ($row->td[5]->img['src'] == $ok_url) ? 'Pass' : 'Fail';
+          $src = $row->td[5]->img['src'];
+          if ($src == $ok_url) {
+            $assertion['status'] = 'Pass';
+          }
+          else if ($src == $pending_url) {
+            $assertion['status'] = 'Pending';
+          }
+          else {
+            $assertion['status'] = 'Fail';
+          }
           $results['assertions'][] = $assertion;
         }
       }
