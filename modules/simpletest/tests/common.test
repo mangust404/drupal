@@ -1974,7 +1974,12 @@ class JavaScriptTestCase extends DrupalWebTestCase {
     $query_string = variable_get('css_js_query_string', '0');
     if (preg_match_all('/src="((\/|' . preg_quote($GLOBALS['base_url'] . '/', '/') . ')?([^?]+)\.js)\?/', $content, $matches)) {
       foreach($matches[1] as $file) {
-        $this->drupalGet($file);
+        // Returned path when drupal is inside subdirectory will be "/subdir/misc/jquery.js".
+        // It works correctly inside web browser when adding a script or style to the page.
+        // But for simpletest methods like drupalGet(), drupalHead() and drupalPost()
+        // it is wrong path because those methods will prepend url by base_path() and you'll
+        // get something like "/subdir/subdir/misc/jquery.js".
+        $this->drupalGet('http://' . $_SERVER['HTTP_HOST'] . $file);
         $this->assertResponse(200, 'Javascript file ' . basename($file) . ' was downloaded');
       }
     }

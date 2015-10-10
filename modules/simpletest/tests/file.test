@@ -2238,7 +2238,12 @@ class FileDownloadTest extends FileTestCase {
     $filepath = 'misc/jquery.js';
     $url = file_create_url($filepath);
     $this->assertEqual($url, base_path() . $filepath, 'Correctly generated a URL for a shipped file.');
-    $this->drupalHead($url);
+    // Returned path when drupal is inside subdirectory will be "/subdir/misc/jquery.js".
+    // It works correctly inside web browser when adding a script or style to the page.
+    // But for simpletest methods like drupalGet(), drupalHead() and drupalPost()
+    // it is wrong path because those methods will prepend url by base_path() and you'll
+    // get something like "/subdir/subdir/misc/jquery.js".
+    $this->drupalHead('http://' . $_SERVER['HTTP_HOST'] . $url);
     $this->assertResponse(200, 'Confirmed that the generated URL is correct by downloading the shipped file.');
   }
 
