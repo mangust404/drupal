@@ -10,6 +10,7 @@
  */
 function language_initialize() {
   global $user;
+  global $language_url;
 
   // Configured presentation language mode.
   $mode = variable_get('language_negotiation', LANGUAGE_NEGOTIATION_NONE);
@@ -25,6 +26,7 @@ function language_initialize() {
       foreach ($languages as $language) {
         $parts = parse_url($language->domain);
         if (!empty($parts['host']) && ($_SERVER['HTTP_HOST'] == $parts['host'])) {
+          $language_url = $language;
           return $language;
         }
       }
@@ -41,6 +43,7 @@ function language_initialize() {
         if (!empty($language->prefix) && $language->prefix == $prefix) {
           // Rebuild $GET['q'] with the language removed.
           $_GET['q'] = implode('/', $args);
+          $language_url = $language;
           return $language;
         }
       }
@@ -103,15 +106,26 @@ function language_from_browser() {
  */
 function language_url_rewrite(&$path, &$options) {
   global $language;
+  $languages = &drupal_static(__FUNCTION__ . ':languages');
+
+  if (!isset($languages)) {
+    $languages = language_list('enabled');
+    $languages = array_flip(array_keys($languages[1]));
+  }
+
+  // Language can be passed as an option, or we go for current URL language.
+  if (!isset($options['language'])) {
+    global $language_url;
+    $options['language'] = $language_url;
+  }
+  // We allow only enabled languages here.
+  elseif (!isset($languages[$options['language']->language])) {
+    unset($options['language']);
+    return;
+  }
 
   // Only modify relative (insite) URLs.
-  if (empty($options['external'])) {
-
-    // Language can be passed as an option, or we go for current language.
-    if (!isset($options['language'])) {
-      $options['language'] = $language;
-    }
-
+  if (empty($options['external']) && isset($options['language'])) {
     switch (variable_get('language_negotiation', LANGUAGE_NEGOTIATION_NONE)) {
       case LANGUAGE_NEGOTIATION_NONE:
         // No language dependent path allowed in this mode.
@@ -123,6 +137,17 @@ function language_url_rewrite(&$path, &$options) {
           // Ask for an absolute URL with our modified base_url.
           $options['absolute'] = TRUE;
           $options['base_url'] = $options['language']->domain;
+        }
+        else if($options['language']->language != $language->language) {
+          // Get domain of default language from $cookie_domain if language domain
+          // is empty.
+          global $cookie_domain;
+          if(!empty($cookie_domain)) {
+            $domain = trim($cookie_domain, '.');
+            $protocol = empty($_SERVER['HTTPS'])? 'http://': 'https://';
+            $options['base_url'] = trim($protocol . $domain . base_path(), '/');
+            $options['absolute'] = TRUE;
+          }
         }
         break;
 

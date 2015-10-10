@@ -1192,7 +1192,7 @@ function fix_gpc_magic() {
  */
 function t($string, $args = array(), $langcode = NULL, $context = '') {
   global $language;
-  static $custom_strings;
+  $custom_strings = &drupal_static(__FUNCTION__, array());
 
   $langcode = isset($langcode) ? $langcode : $language->language;
 

@@ -431,6 +431,9 @@ function locale_languages_delete_form_submit($form, &$form_state) {
     // Remove the language.
     db_query("DELETE FROM {languages} WHERE language = '%s'", $form_state['values']['langcode']);
     db_query("UPDATE {node} SET language = '' WHERE language = '%s'", $form_state['values']['langcode']);
+    if ($languages[$form_state['values']['langcode']]->enabled) {
+      variable_set('language_count', variable_get('language_count', 1) - 1);
+    }
     $variables = array('%locale' => $languages[$form_state['values']['langcode']]->name);
     drupal_set_message(t('The language %locale has been removed.', $variables));
     watchdog('locale', 'The language %locale has been removed.', $variables);
@@ -612,14 +615,16 @@ function locale_translate_import_form() {
 
   if (!count($names)) {
     $languages = _locale_prepare_predefined_list();
-    $default = array_shift(array_keys($languages));
+    $keys = array_keys($languages);
+    $default = array_shift($keys);
   }
   else {
     $languages = array(
       t('Already added languages') => $names,
       t('Languages not yet added') => _locale_prepare_predefined_list()
     );
-    $default = array_shift(array_keys($names));
+    $keys = array_keys($names);
+    $default = array_shift($keys);
   }
 
   $form = array();

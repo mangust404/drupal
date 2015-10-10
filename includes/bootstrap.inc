@@ -1265,9 +1265,6 @@ function check_plain($text) {
   // internally by PHP in htmlspecialchars().
   // @see http://www.php.net/releases/5_2_5.php
   // @todo remove this when support for either IE6 or PHP < 5.2.5 is dropped.
-if(is_array($text)) {
-  print_r(debug_backtrace());
-}
   if ($php525) {
     return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
   }
@@ -1781,7 +1778,7 @@ function drupal_init_language() {
  * @param $reset Boolean to request a reset of the list.
  */
 function language_list($field = 'language', $reset = FALSE) {
-  static $languages = NULL;
+  $languages = &drupal_static(__FUNCTION__, NULL);
 
   // Reset language list
   if ($reset) {

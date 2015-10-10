@@ -328,7 +328,7 @@ function locale_node_type($op, $info) {
  */
 function locale($string = NULL, $langcode = NULL, $reset = FALSE) {
   global $language;
-  static $locale_t;
+  $locale_t = &drupal_static(__FUNCTION__);
 
   if ($reset) {
     // Reset in-memory cache.
@@ -415,14 +415,21 @@ function locale_get_plural($count, $langcode = NULL) {
   $langcode = $langcode ? $langcode : $language->language;
 
   if (!isset($plurals[$langcode][$count])) {
-    if (!isset($locale_formula)) {
+    if (!isset($locale_formula[$langcode])) {
       $language_list = language_list();
-      $locale_formula[$langcode] = $language_list[$langcode]->formula;
+      if(isset($language_list[$langcode])) {
+        $locale_formula[$langcode] = $language_list[$langcode]->formula;
+      }
     }
-    if ($locale_formula[$langcode]) {
+    if (!empty($locale_formula[$langcode])) {
       $n = $count;
       $plurals[$langcode][$count] = @eval('return intval('. $locale_formula[$langcode] .');');
       return $plurals[$langcode][$count];
+    }
+    // In case there is no plural formula for English (no imported translation
+    // for English), use a default formula.
+    elseif ($langcode == 'en') {
+      $plurals[$langcode][$count] = (int) ($count != 1);
     }
     else {
       $plurals[$langcode][$count] = -1;
@@ -596,7 +603,7 @@ function locale_block($op = 'list', $delta = 0) {
 
   // Only show if we have at least two languages and language dependent
   // web addresses, so we can actually link to other language versions.
-  elseif ($op == 'view' && variable_get('language_count', 1) > 1 && variable_get('language_negotiation', LANGUAGE_NEGOTIATION_NONE) != LANGUAGE_NEGOTIATION_NONE) {
+  elseif ($op == 'view' && variable_get('language_count', 1) > 1 && ($negotiation = variable_get('language_negotiation', LANGUAGE_NEGOTIATION_NONE)) != LANGUAGE_NEGOTIATION_NONE) {
     $path = drupal_is_front_page() ? '<front>' : $_GET['q'];
     $languages = language_list('enabled');
     $links = array();
@@ -619,4 +626,16 @@ function locale_block($op = 'list', $delta = 0) {
     $block['content'] = theme('links', $links, array());
     return $block;
   }
+}
+
+/**
+ * Implements hook_url_outbound_alter().
+ *
+ * Rewrite outbound URLs with language based prefixes.
+ */
+function locale_url_outbound_alter(&$path, &$options, $original_path) {
+  // Since language_url_rewrite() is not hardcoded into url(), we should
+  // cal it here.
+  include_once DRUPAL_ROOT . '/includes/language.inc';
+  language_url_rewrite($path, $options);
 }
