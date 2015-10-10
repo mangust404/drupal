@@ -96,9 +96,6 @@ class ModuleUnitTest extends DrupalWebTestCase {
     // For that activate the module_test which provides the file to load.
     module_enable(array('module_test'));
 
-    // D6 doesn't install schema when enables the module, triggering it manually
-    _drupal_install_module('module_test');
-
     module_load_include('inc', 'module_test', 'module_test.file');
     $modules = module_implements('test_hook');
     $static = drupal_static('module_implements');
@@ -111,8 +108,6 @@ class ModuleUnitTest extends DrupalWebTestCase {
    */
   function testModuleInvoke() {
     module_enable(array('module_test'), FALSE);
-    // D6 doesn't install schema when enables the module, triggering it manually
-    _drupal_install_module('module_test');
 
     $this->resetAll();
     $this->drupalGet('module-test/hook-dynamic-loading-invoke');
@@ -123,8 +118,6 @@ class ModuleUnitTest extends DrupalWebTestCase {
    * Test that module_invoke_all() can load a hook defined in hook_hook_info().
    */
   function testModuleInvokeAll() {
-    // D6 doesn't install schema when enables the module, triggering it manually
-    _drupal_install_module('module_test');
     module_enable(array('module_test'), FALSE);
 
     $this->resetAll();
