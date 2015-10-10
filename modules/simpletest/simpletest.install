@@ -26,7 +26,7 @@ function simpletest_install() {
     if (simpletest_get_file_count($path, 'binary') == 0) {
       $lines = array(64, 1024);
       foreach ($lines as $line) {
-        simpletest_generate_file('binary', 64, $line, 'binary');
+        simpletest_generate_file($path . '/binary', 64, $line, 'binary');
       }
       $generated = TRUE;
     }
@@ -34,7 +34,7 @@ function simpletest_install() {
     if (simpletest_get_file_count($path, 'text') == 0) {
       $lines = array(16, 256, 1024, 2048, 20480);
       foreach ($lines as $line) {
-        simpletest_generate_file('text', 64, $line);
+        simpletest_generate_file($path . '/text', 64, $line);
       }
       $generated = TRUE;
     }
