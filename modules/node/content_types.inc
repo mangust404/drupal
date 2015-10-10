@@ -83,6 +83,9 @@ function node_type_form(&$form_state, $type = NULL) {
       '#maxlength' => 32,
       '#required' => TRUE,
       '#description' => t('The machine-readable name of this content type. This text will be used for constructing the URL of the <em>create content</em> page for this content type. This name must contain only lowercase letters, numbers, and underscores. Underscores will be converted into hyphens when constructing the URL of the <em>create content</em> page. This name must be unique.'),
+      '#attributes' => array(
+        'dir' => 'ltr',
+      ),
     );
   }
   else {
