@@ -637,7 +637,7 @@ function install_goto($path) {
  * the install process, when database, theme, and localization
  * system is possibly not yet available.
  */
-function st($string, $args = array()) {
+function st($string, $args = array(), $langcode = NULL, $context = '') {
   static $locale_strings = NULL;
   global $profile, $install_locale;
 
