@@ -1079,7 +1079,7 @@ function theme_get_setting($setting_name, $refresh = FALSE) {
     $themes = list_themes();
     $theme_object = $themes[$theme_key];
 
-    if(!empty($theme_object->info['settings'])) {
+    if (!empty($theme_object->info['settings'])) {
       foreach ($theme_object->info['settings'] as $name => $default) {
         if (!isset($settings[$name])) {
           $settings[$name] = $default;

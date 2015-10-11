@@ -50,7 +50,7 @@ if ($args['clean']) {
 
   // Get the status messages and print them.
   $messages = array_pop(drupal_get_messages('status'));
-  foreach($messages as $text) {
+  foreach ($messages as $text) {
     echo " - " . $text . "\n";
   }
   exit;
@@ -379,7 +379,7 @@ function simpletest_script_run_one_test($test_id, $test_class) {
 
   function simpletest_shutdown() {
     global $test_run_success, $current_test_class, $current_test_method;
-    if(!$test_run_success) {
+    if (!$test_run_success) {
       print simpletest_script_print('FATAL: Test execution script exited unexpectedly: ' . (empty($current_test_class)? 'unknown_class': $current_test_class) . (empty($current_test_method)? '::unknown method': '::' . $current_test_method) . "\n", simpletest_script_color_code('fail'));
     }
   }
@@ -390,7 +390,7 @@ function simpletest_script_run_one_test($test_id, $test_class) {
   require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
   $classes = simpletest_test_get_all_classes();
 
-  if(strpos($test_class, '::') !== FALSE) {
+  if (strpos($test_class, '::') !== FALSE) {
     // Run single method
     list($class, $method) = explode('::', $test_class);
     require_once $classes[$class]['file'];
@@ -398,7 +398,8 @@ function simpletest_script_run_one_test($test_id, $test_class) {
     $current_test_class = $class;
     $test = new $class($test_id);
     $test->run($method);
-  } else {
+  }
+  else {
     require_once $classes[$test_class]['file'];
 
     $test = new $test_class($test_id);
@@ -473,24 +474,24 @@ function simpletest_script_get_test_list() {
     }
     elseif (!empty($args['name'])) {
       require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
-      if(strpos($args['name'], '::') !== FALSE) {
+      if (strpos($args['name'], '::') !== FALSE) {
         list($class, $method) = explode('::', $args['name']);
         $all = simpletest_test_get_all_classes();
-        if(isset($all[$class])) {
+        if (isset($all[$class])) {
           require_once($all[$class]['file']);
-          if(method_exists(new $class, $method)) {
+          if (method_exists(new $class, $method)) {
             $test_list[] = $class . '::' . $method;
           }
         }
       }
-      foreach(simpletest_test_get_all_classes() as $class => $info) {
+      foreach (simpletest_test_get_all_classes() as $class => $info) {
         require_once($info['file']);
-        foreach(get_class_methods($class) as $method) {
-          if(stripos($method, 'test') === 0 && stripos($method, $args['name']) !== FALSE) {
+        foreach (get_class_methods($class) as $method) {
+          if (stripos($method, 'test') === 0 && stripos($method, $args['name']) !== FALSE) {
             $test_list[] = $class . '::' . $method;
           }
         }
-        if(stripos($class, $args['name']) !== FALSE) {
+        if (stripos($class, $args['name']) !== FALSE) {
           $test_list[] = $class;
         }
       }
@@ -499,7 +500,7 @@ function simpletest_script_get_test_list() {
       // Check for valid group names and get all valid classes in group.
       foreach ($args['test_names'] as $group_name) {
         if (isset($groups[$group_name])) {
-          foreach($groups[$group_name] as $class_name => $info) {
+          foreach ($groups[$group_name] as $class_name => $info) {
             $test_list[] = $class_name;
           }
         }
@@ -590,7 +591,8 @@ function simpletest_script_reporter_display_results() {
         simpletest_script_format_result($result);
       }
     }
-  } else if($args['errors']) {
+  }
+  else if ($args['errors']) {
     $results = db_query("SELECT * FROM {simpletest} WHERE test_id = %d AND status != 'pass' ORDER BY test_class, message_id", $test_id);
     while ($result = db_fetch_object($results)) {
       if (isset($results_map[$result->status])) {

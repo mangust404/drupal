@@ -37,7 +37,7 @@ function node_test_nodeapi(&$node, $op) {
       $node->node_test_nodeapi_load = TRUE;
       break;
     case 'view':
-      if(isset($node->build_mode) && $node->build_mode == NODE_BUILD_RSS) {
+      if (isset($node->build_mode) && $node->build_mode == NODE_BUILD_RSS) {
         // Add content that should be displayed only in the RSS feed.
         $node->content['extra_feed_content'] = array(
           '#markup' => '<p>' . t('Extra data that should appear only in the RSS feed for node !nid.', array('!nid' => $node->nid)) . '</p>',

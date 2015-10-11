@@ -236,7 +236,7 @@ function update_script_selection_form() {
         }
       }
       $updates[] = 'No updates available';
-      if($schema_version == $default) {
+      if ($schema_version == $default) {
         end($updates);
         $default = key($updates);
       }

@@ -17,7 +17,7 @@ function block_test_system_theme_info() {
  * Implements hook_block().
  */
 function block_test_block($op = 'list', $delta = 0, $edit = array()) {
-  switch($op) {
+  switch ($op) {
     case 'list':
       $blocks['test_cache'] = array(
         'info' => t('Test block caching'),
@@ -36,10 +36,10 @@ function block_test_block($op = 'list', $delta = 0, $edit = array()) {
         'info' => t('Test block html id'),
       );
       return $blocks;
-    break;
+      break;
     case 'view':
       return array('content' => variable_get('block_test_content', ''));
-    break;
+      break;
   }
 }
 

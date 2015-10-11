@@ -772,7 +772,7 @@ function install_profile_info($profile, $locale = 'en') {
     // Using D6 format
     require_once "profiles/$profile/$profile.profile";
     $func = "{$profile}_profile_modules";
-    if(function_exists($func)) {
+    if (function_exists($func)) {
       $info['dependencies'] = array_unique(array_merge($info['dependencies'], $func()));
     }
     

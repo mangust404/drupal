@@ -276,9 +276,10 @@ class DBLogTestCase extends DrupalWebTestCase {
    */
   private function doNode($type) {
     // Create user.
-    if($type == 'blog') {
+    if ($type == 'blog') {
       $perm = array('create ' . $type . ' entries', 'edit own ' . $type . ' entries', 'delete own ' . $type . ' entries');
-    } else {
+    }
+    else {
       $perm = array('create ' . $type . ' content', 'edit own ' . $type . ' content', 'delete own ' . $type . ' content');
     }
     $user = $this->drupalCreateUser($perm);

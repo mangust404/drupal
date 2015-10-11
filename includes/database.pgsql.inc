@@ -632,7 +632,7 @@ function db_rename_table(&$ret, $table, $new_name) {
   // At first rename indexes if present
   $full_table = db_prefix_tables('{' . $table . '}');
   $full_new_name = db_prefix_tables('{' . $new_name . '}');
-  foreach(db_get_indexes($table) as $index_name => $cols) {
+  foreach (db_get_indexes($table) as $index_name => $cols) {
     $ret[] = update_sql('ALTER INDEX ' . $full_table . '_' . $index_name . DB_PGSQL_INDEX_SUFFIX . ' RENAME TO ' . $full_new_name . '_' . $index_name . DB_PGSQL_INDEX_SUFFIX);
   }
 

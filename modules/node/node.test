@@ -156,7 +156,7 @@ class NodeLoadHooksTestCase extends DrupalWebTestCase {
       $this->assertEqual($nid_loaded_node->nid, $node->nid, 'Loaded by nid and created nodes are the same');
       drupal_static_reset('node_load');
 
-      foreach($test_params as $param) {
+      foreach ($test_params as $param) {
         $loaded_node = node_load(array($param => $node->$param));
         $this->assertEqual($nid_loaded_node->nid, $node->nid, format_string('Node loaded by %param and created node are the same', array('%param' => $param)));
         $this->assertEqual($nid_loaded_node->node_test_nodeapi_load, TRUE, 'hook_nodapi() load invoked');

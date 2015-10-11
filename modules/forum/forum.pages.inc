@@ -18,10 +18,10 @@ function forum_page($tid = 0) {
   $forum_per_page = variable_get('forum_per_page', 25);
   $sortby = variable_get('forum_order', 1);
 
-  if($tid > 0) {
+  if ($tid > 0) {
     // Return 404 if forum was deleted
     $term = taxonomy_get_term($tid);
-    if(empty($term)) {
+    if (empty($term)) {
       return MENU_NOT_FOUND;
     }
   }

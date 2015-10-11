@@ -224,7 +224,7 @@ function db_error() {
 function db_affected_rows($set = NULL) {
   if (error_reporting() & E_WARNING) {
     $num_rows = &drupal_static(__FUNCTION__);
-    if(!is_null($set)) {
+    if (!is_null($set)) {
       $num_rows = $set;
     }
     return $num_rows;

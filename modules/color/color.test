@@ -128,7 +128,7 @@ class ColorTestCase extends DrupalWebTestCase {
       $edit['palette[base]'] = $color;
       $this->drupalPost($settings_path, $edit, t('Save configuration'));
 
-      if($is_valid) {
+      if ($is_valid) {
         $this->assertText('The configuration options have been saved.');
       }
       else {

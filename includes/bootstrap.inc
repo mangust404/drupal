@@ -686,13 +686,15 @@ function drupal_get_filename($type, $name, $filename = NULL) {
     // Fallback to searching the filesystem if the database connection is
     // not established or the requested file is not found.
     $config = conf_path();
-    if($type == 'theme_engine') {
+    if ($type == 'theme_engine') {
       $dir = 'themes/engines';
       $file = "$name.engine";
-    } else if($type == 'theme') {
+    }
+    else if ($type == 'theme') {
       $dir = "${type}s";
       $file = "$name.info";
-    } else {
+    }
+    else {
       $dir = "${type}s";
       $file = "$name.$type";
     }

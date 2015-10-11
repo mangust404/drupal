@@ -62,7 +62,7 @@ class HelpTestCase extends DrupalWebTestCase {
 
     // Make sure links are properly added for modules implementing hook_help().
     foreach ($this->modules as $module => $name) {
-      if($module == 'system') $name = 'System';
+      if ($module == 'system') $name = 'System';
       $this->assertLink($name, 0, format_string('Link properly added to @name (admin/help/@module)', array('@module' => $module, '@name' => $name)));
     }
   }
@@ -75,7 +75,7 @@ class HelpTestCase extends DrupalWebTestCase {
    */
   protected function verifyHelp($response = 200) {
     foreach ($this->modules as $module => $name) {
-      if($module == 'system') {
+      if ($module == 'system') {
         $name = 'System';
       }
       // View module help node.

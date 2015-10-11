@@ -51,7 +51,7 @@ function file_create_url($path) {
   // Both types of relative URIs are characterized by a leading slash, hence
   // we can use a single check.
   // Check if drupal_alter already created absolute url or protocol-relative url.
-  if(strpos($path, '://') !== FALSE || ($path{0} == '/' && $path{1} == '/')) {
+  if (strpos($path, '://') !== FALSE || ($path{0} == '/' && $path{1} == '/')) {
     return $path;
   }
 
@@ -305,7 +305,7 @@ function file_check_location($source, $directory = '') {
 function file_load($fid) {
   $file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $fid));
 
-  if(!empty($file)) {
+  if (!empty($file)) {
     $result = array(&$file);
     module_invoke_all('file_load', $result);
     return $result[0];
@@ -607,7 +607,7 @@ function file_create_filename($basename, $directory = '') {
     $basename = str_replace(array(':', '*', '?', '"', '<', '>', '|'), '_', $basename);
   }
 
-  if(empty($directory)) {
+  if (empty($directory)) {
     $dest = $basename;
   } else {
     $dest = $directory .'/'. $basename;
@@ -640,7 +640,7 @@ function file_create_filename($basename, $directory = '') {
  * @return TRUE for success, FALSE for failure.
  */
 function file_delete($path) {
-  if(is_object($path) && is_file($path->filepath)) {
+  if (is_object($path) && is_file($path->filepath)) {
     // D7 compatibility
     $file = $path;
     $path = $file->filepath;
@@ -752,7 +752,7 @@ function file_save_upload($source, $validators = array(), $dest = FALSE, $replac
     }
 
     // If extensions if not provided user can upload one of the default extensions
-    if(isset($validators['file_validate_extensions']) && empty($validators['file_validate_extensions'][0])) {
+    if (isset($validators['file_validate_extensions']) && empty($validators['file_validate_extensions'][0])) {
       $validators['file_validate_extensions'][0] = $extensions;
     }
 

@@ -2325,10 +2325,11 @@ class FileDownloadTest extends FileTestCase {
   private function checkUrl($scheme, $directory, $filename, $expected_url, $clean_url = '1') {
     variable_set('clean_url', $clean_url);
 
-    if($scheme == 'public') {
+    if ($scheme == 'public') {
       variable_set('file_downloads', FILE_DOWNLOADS_PUBLIC);
       $this->refreshVariables();
-    } else if($scheme == 'private') {
+    }
+    else if ($scheme == 'private') {
       variable_set('file_downloads', FILE_DOWNLOADS_PRIVATE);
       $this->refreshVariables();
     }

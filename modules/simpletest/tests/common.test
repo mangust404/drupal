@@ -987,18 +987,18 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     $this->assertTrue(preg_match_all('/(href="|url\(")((\/|' . preg_quote($GLOBALS['base_url'] . '/', '/') . ')?([^"]+)\.css)/', $this->drupalGetContent(), $matches), 'Stylesheets found');
 
     // Check all the stylesheets contents
-    foreach($matches[2] as $stylesheet) {
-      if($stylesheet{0} == '/') {
+    foreach ($matches[2] as $stylesheet) {
+      if ($stylesheet{0} == '/') {
         $stylesheet = substr($stylesheet, 1);
       }
       // If it's a local file
-      if(file_exists($stylesheet)) {
+      if (file_exists($stylesheet)) {
         $contents = file_get_contents($stylesheet);
 
         // Fetch all the url() contents
-        if(preg_match_all('/url\(["]?([^\)]+)["]?\)/', $contents, $url_matches)) {
-          foreach($url_matches[1] as $file) {
-            if($file{0} == '/') {
+        if (preg_match_all('/url\(["]?([^\)]+)["]?\)/', $contents, $url_matches)) {
+          foreach ($url_matches[1] as $file) {
+            if ($file{0} == '/') {
               $file = substr($file, 1);
               // It should be a local file
               $this->assertTrue(is_file($file), 'File ' . $file . ' exists');
@@ -1278,13 +1278,13 @@ class CascadingStylesheetsUnitTest extends DrupalUnitTestCase {
 //  public function testStatusLine() {
 //    // Grab the big array of test data from statusLineData().
 //    $data = $this->statusLineData();
-//    foreach($data as $test_case) {
+//    foreach ($data as $test_case) {
 //      $test_data = array_shift($test_case);
 //      $expected = array_shift($test_case);
 //
 //      $outcome = _drupal_parse_response_status($test_data);
 //
-//      foreach(array_keys($expected) as $key) {
+//      foreach (array_keys($expected) as $key) {
 //        $this->assertIdentical($outcome[$key], $expected[$key]);
 //      }
 //    }
@@ -1973,7 +1973,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
     $content = $this->drupalGet('common-test/query-string');
     $query_string = variable_get('css_js_query_string', '0');
     if (preg_match_all('/src="((\/|' . preg_quote($GLOBALS['base_url'] . '/', '/') . ')?([^?]+)\.js)\?/', $content, $matches)) {
-      foreach($matches[1] as $file) {
+      foreach ($matches[1] as $file) {
         // Returned path when drupal is inside subdirectory will be "/subdir/misc/jquery.js".
         // It works correctly inside web browser when adding a script or style to the page.
         // But for simpletest methods like drupalGet(), drupalHead() and drupalPost()
@@ -2057,7 +2057,7 @@ class DrupalRenderTestCase extends DrupalWebTestCase {
         'expected' => 'foo',
       ),
     );
-    foreach($types as $type) {
+    foreach ($types as $type) {
       $this->assertIdentical(drupal_render($type['value']), $type['expected'], '"' . $type['name'] . '" input rendered correctly by drupal_render().');
     }
   }

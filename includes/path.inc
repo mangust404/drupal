@@ -49,7 +49,7 @@ function drupal_lookup_path($action, $path = '', $path_language = '') {
 
   $path_language = $path_language ? $path_language : $language->language;
 
-  if(!function_exists('db_query')) return;
+  if (!function_exists('db_query')) return;
   // Use $count to avoid looking up paths in subsequent calls if there simply are no aliases
   if (!isset($count)) {
     $count = db_result(db_query('SELECT COUNT(pid) FROM {url_alias}'));

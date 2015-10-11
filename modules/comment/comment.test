@@ -696,7 +696,7 @@ class CommentInterfaceTest extends CommentHelperCase {
 
     // Remove additional user permissions from $this->web_user added by setUp(),
     // since this test is limited to anonymous and authenticated roles only.
-    foreach($this->web_user->roles as $rid) {
+    foreach ($this->web_user->roles as $rid) {
       db_query("DELETE FROM {role} WHERE rid= %d");
       db_query("DELETE FROM {permission} WHERE rid = %d", $rid);
     }

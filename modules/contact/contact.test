@@ -269,7 +269,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
     $edit['subject'] = $subject;
     $edit['cid'] = $cid;
     $edit['message'] = $message;
-    if(!empty($category)) {
+    if (!empty($category)) {
       $edit['cid'] = $category;
     }
     $this->drupalPost('contact', $edit, t('Send e-mail'));

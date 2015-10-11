@@ -254,7 +254,7 @@ function locale_uninstall() {
   while ($file = db_fetch_object($files)) {
     if (!empty($file->javascript)) {
       $filepath = file_create_path($dir .'/'. $file->language .'_'. $file->javascript .'.js');
-      if(file_exists($filepath)) {
+      if (file_exists($filepath)) {
         file_delete($filepath);
       }
     }

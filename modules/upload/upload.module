@@ -587,7 +587,7 @@ function upload_js() {
   // Handle new uploads, and merge tmp files into node-files.
   upload_node_form_submit($cached_form, $form_state);
 
-  if(!empty($form_state['values']['files'])) {
+  if (!empty($form_state['values']['files'])) {
     foreach ($form_state['values']['files'] as $fid => $file) {
       if (isset($cached_form['#node']->files[$fid])) {
         $files[$fid] = $cached_form['#node']->files[$fid];

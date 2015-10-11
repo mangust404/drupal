@@ -242,7 +242,7 @@ function drupal_rebuild_form($form_id, &$form_state, $args, $old_form = NULL) {
   // Now, we cache the form structure so it can be retrieved later for
   // validation. If $form_state['storage'] is populated, we'll also cache
   // it so that it can be used to resume complex multi-step processes.
-  if(empty($form['#no_cache'])) {
+  if (empty($form['#no_cache'])) {
     form_set_cache($form['#build_id'], $form, $form_state);
   }
 
@@ -259,12 +259,12 @@ function drupal_rebuild_form($form_id, &$form_state, $args, $old_form = NULL) {
  * Recursively copy #post attribute from old_form to new form
  */
 function form_copy_post(&$form, $old_form) {
-  foreach(element_children($form) as $key) {
-    if(isset($old_form[$key])) {
+  foreach (element_children($form) as $key) {
+    if (isset($old_form[$key])) {
       form_copy_post($form[$key], $old_form[$key]);
     }
   }
-  if(isset($old_form['#post'])) {
+  if (isset($old_form['#post'])) {
     $form['#post'] = $old_form['#post'];
   }
 }
@@ -510,9 +510,9 @@ function drupal_retrieve_form($form_id, &$form_state) {
   array_unshift($args, NULL);
   $args[0] = &$form_state;
   // Ensure that all arguments will be passed to form function
-  if(!empty($form_state['build_info']['args'])) {
-    foreach($form_state['build_info']['args'] as $key => $arg) {
-      if(!isset($args[$key + 1])) {
+  if (!empty($form_state['build_info']['args'])) {
+    foreach ($form_state['build_info']['args'] as $key => $arg) {
+      if (!isset($args[$key + 1])) {
         $args[$key + 1] = $arg;
       }
     }
@@ -1076,7 +1076,7 @@ function form_get_errors() {
  */
 function form_get_error($element) {
   $form = form_set_error();
-  if(empty($element['#parents'][0])) {
+  if (empty($element['#parents'][0])) {
     // Nothing to return if the rendered element is not a part of the form
     return;
   }
@@ -1162,7 +1162,7 @@ function form_builder($form_id, $form, &$form_state) {
   $count = 0;
   foreach (element_children($form) as $key) {
     // Workaround to keep a previous form state when form is being rebuilt
-    if(!isset($form[$key]['#post'])) {
+    if (!isset($form[$key]['#post'])) {
       $form[$key]['#post'] = $form['#post'];
     }
     $form[$key]['#programmed'] = $form['#programmed'];
@@ -1443,7 +1443,7 @@ function _form_builder_handle_input_element($form_id, &$form, &$form_state, $com
  */
 function _form_button_was_clicked($form) {
   // Simple buttons should just rebuild the form
-  if($form['#type'] != 'submit') {
+  if ($form['#type'] != 'submit') {
     return FALSE;
   }
   // First detect normal 'vanilla' button clicks. Traditionally, all
@@ -3280,7 +3280,7 @@ function batch_process($redirect = NULL, $url = NULL) {
       // Workaround for new "lazy" sessions. 
       // Session will not start for anonymous user and batch will not work
       // because token is based on session_id.
-      if(!empty($GLOBALS['lazy_session'])) {
+      if (!empty($GLOBALS['lazy_session'])) {
         drupal_session_commit();
       }
 

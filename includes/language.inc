@@ -138,11 +138,11 @@ function language_url_rewrite(&$path, &$options) {
           $options['absolute'] = TRUE;
           $options['base_url'] = $options['language']->domain;
         }
-        else if($options['language']->language != $language->language) {
+        else if ($options['language']->language != $language->language) {
           // Get domain of default language from $cookie_domain if language domain
           // is empty.
           global $cookie_domain;
-          if(!empty($cookie_domain)) {
+          if (!empty($cookie_domain)) {
             $domain = trim($cookie_domain, '.');
             $protocol = empty($_SERVER['HTTPS'])? 'http://': 'https://';
             $options['base_url'] = trim($protocol . $domain . base_path(), '/');

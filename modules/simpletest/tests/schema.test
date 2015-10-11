@@ -91,11 +91,12 @@ class SchemaTestCase extends DrupalWebTestCase {
     // We should have successfully inserted exactly two rows.
     $count = db_result(db_query('SELECT COUNT(*) FROM {test_table2}'));
     global $db_type;
-    if(in_array($db_type, array('mysql', 'mysqli'))) {
+    if (in_array($db_type, array('mysql', 'mysqli'))) {
       // Mysql doesn't throw an exception on invalid default values
       // and just adds data to database. Consider this fact.
       $this->assertEqual($count, 4, 'Four fields were successfully inserted.');
-    } else {
+    }
+    else {
       $this->assertEqual($count, 2, 'Two fields were successfully inserted.');
     }
 

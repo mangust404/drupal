@@ -558,13 +558,13 @@ function drupal_encode_path($path) {
 function drupal_goto($path = '', $options = array(), $http_response_code = 302) {
       // D6 Compat:  $path = '', $query = NULL, $fragment = NULL, $http_response_code = 302
 
-  if(is_string($options) || is_string($http_response_code)) {
+  if (is_string($options) || is_string($http_response_code)) {
     $options = array('query' => $options);
     $args = func_get_args();
-    if(!empty($args[2])) {
+    if (!empty($args[2])) {
       $options['fragment'] = $args[2];
     }
-    if(!empty($args[3])) {
+    if (!empty($args[3])) {
       $http_response_code = $args[3];
     } else {
       $http_response_code = 302;
@@ -1202,7 +1202,7 @@ function t($string, $args = array(), $langcode = NULL, $context = '') {
   // Cache the $custom_strings variable to improve performance.
   if (!isset($custom_strings[$langcode])) {
     $custom_strings[$langcode] = variable_get('locale_custom_strings_'. $langcode, array());
-    if(!isset($custom_strings[$langcode][''])) {
+    if (!isset($custom_strings[$langcode][''])) {
       // D6 compatibility, setting empty context if it's not present
       $custom_strings[$langcode][''] = $custom_strings[$langcode];
     }
@@ -1241,7 +1241,7 @@ function t($string, $args = array(), $langcode = NULL, $context = '') {
  *   there is an input error (such as passing in an array instead of a string).
  */
 function valid_email_address($mail) {
-  if(function_exists('filter_var')) {
+  if (function_exists('filter_var')) {
     return (bool)filter_var($mail, FILTER_VALIDATE_EMAIL);
   }
 
@@ -1684,7 +1684,7 @@ function format_date($timestamp, $type = 'medium', $format = '', $timezone = NUL
     $drupal_static_fast['timezones'] = &drupal_static(__FUNCTION__);
   }
 
-  if(!is_numeric($timezone)) {
+  if (!is_numeric($timezone)) {
     $timezones = &$drupal_static_fast['timezones'];
 
     if (!isset($timezone)) {
@@ -1730,7 +1730,7 @@ function format_date($timestamp, $type = 'medium', $format = '', $timezone = NUL
       break;
   }
 
-  if(is_numeric($timezone)) {
+  if (is_numeric($timezone)) {
     // D6 compatibility
     $timestamp = $timestamp + $timezone;
     $date_time = date_create('@' . $timestamp);
@@ -2061,7 +2061,7 @@ function drupal_attributes($attributes = array()) {
   if (is_array($attributes)) {
     $t = '';
     foreach ($attributes as $key => $value) {
-      if($key == 'class' && is_array($value)) {
+      if ($key == 'class' && is_array($value)) {
         $t .= " $key=".'"'. check_plain(implode(' ', $value)) .'"';
       } else {
         $t .= " $key=".'"'. check_plain($value) .'"';
@@ -2121,7 +2121,7 @@ function l($text, $path, $options = array()) {
       'html' => FALSE,
     );
 
-  if(isset($options['attributes']['class']) && is_array($options['attributes']['class'])) {
+  if (isset($options['attributes']['class']) && is_array($options['attributes']['class'])) {
     // compatibility with D7 syntax
     $options['attributes']['class'] = implode(' ', $options['attributes']['class']);
   }
@@ -2409,22 +2409,22 @@ function drupal_add_css($data = NULL, $options = NULL) {
 
       // Drupal6 compatibility
       $args = func_get_args();
-      if(isset($args[2])) {
+      if (isset($args[2])) {
         $options['media'] = $args[2];
       }
-      if(isset($args[3])) {
+      if (isset($args[3])) {
         $options['preprocess'] = $args[3];
-        if(!$options['preprocess'] && strpos($data, '://') === FALSE && $data{0} != '/') {
+        if (!$options['preprocess'] && strpos($data, '://') === FALSE && $data{0} != '/') {
           // D6 modules may add files with preprocess = FALSE and don't provide valid url.
           $data = base_path() . $data;
         }
       }
 
-      if($options['type'] == 'theme') {
+      if ($options['type'] == 'theme') {
         $options['group'] = CSS_THEME;
         $options['every_page'] = TRUE;
       }
-      if($options['type'] == 'module') {
+      if ($options['type'] == 'module') {
         $options['type'] = 'file';
       }
     }
@@ -3432,23 +3432,24 @@ function drupal_add_js($data = NULL, $options = NULL) {
 
       // Drupal6 compatibility
       $args = func_get_args();
-      if(isset($args[2])) {
+      if (isset($args[2])) {
         $options['media'] = $args[2];
       }
-      if(isset($args[3]) && !empty($args[3])) {
+      if (isset($args[3]) && !empty($args[3])) {
         $options['attributes']['defer'] = 'defer';
       }
-      if(isset($args[4])) {
+      if (isset($args[4])) {
         $options['cache'] = $args[4];
       }
-      if(isset($args[5])) {
+      if (isset($args[5])) {
         $options['preprocess'] = $args[5];
       }
 
-      if($options['type'] == 'theme') {
+      if ($options['type'] == 'theme') {
         $options['group'] = JS_THEME;
         $options['every_page'] = TRUE;
-      } else if($options['type'] == 'core') {
+      }
+      else if ($options['type'] == 'core') {
         $options['type'] = 'file';
       }
     }
@@ -4957,7 +4958,7 @@ function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL, &$con
     global $theme, $base_theme_info;
     if (isset($theme)) {
       $theme_keys = array();
-      if(isset($base_theme_info)) {
+      if (isset($base_theme_info)) {
         foreach ($base_theme_info as $base) {
           $theme_keys[] = $base->name;
         }
@@ -5851,11 +5852,12 @@ function drupal_write_record($table, &$object, $primary_keys = array()) {
     }
 
     // Build arrays for the fields, placeholders, and values in our query.
-    if(is_null($fields[$field]) && empty($info['not null'])) {
+    if (is_null($fields[$field]) && empty($info['not null'])) {
       /// field may take NULL values
       $placeholders[] = '%s';
       $values[] = 'NULL';
-    } else {
+    }
+    else {
       $placeholders[] = db_type_placeholder($info['type']);
       $values[] = $fields[$field];
     }

@@ -314,7 +314,7 @@ class ThemeLinksTest extends DrupalWebTestCase {
 
     $this->content = theme('links', $links);
 
-    foreach($links as $name => $link) {
+    foreach ($links as $name => $link) {
       $this->assertEqual(count($this->xpath('//ul[@class="links"]/li[contains(@class, "' . $name . '")]')), 1);
       $this->assertLink($link['title']);
     }
@@ -398,7 +398,7 @@ class RenderElementTypesTestCase extends DrupalWebTestCase {
    *   - 'expected': This is the expected markup for the element in 'value'.
    */
   function assertElements($elements) {
-    foreach($elements as $element) {
+    foreach ($elements as $element) {
       $this->assertIdentical(drupal_render($element['value']), $element['expected'], '"' . $element['name'] . '" input rendered correctly by drupal_render().');
     }
   }

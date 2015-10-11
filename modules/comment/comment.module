@@ -1467,10 +1467,10 @@ function comment_form_add_preview($form, &$form_state) {
     if (!empty($account)) {
       $comment->uid = $account->uid;
       $comment->name = check_plain($account->name);
-      if(!empty($account->picture)) {
+      if (!empty($account->picture)) {
         $comment->picture = $account->picture;
       }
-      if(!empty($account->signature)) {
+      if (!empty($account->signature)) {
         $comment->signature = $account->signature;
         $comment->signature_format = $account->signature_format;
       }

@@ -2341,7 +2341,7 @@ function _system_update_bootstrap_status() {
       $bootstrap_modules[] = $module;
     }
   }
-  if(!empty($bootstrap_modules)) {
+  if (!empty($bootstrap_modules)) {
     db_query("UPDATE {system} SET bootstrap = 0");
     db_query("UPDATE {system} SET bootstrap = 1 WHERE name IN (" . db_placeholders($bootstrap_modules, 'varchar') . ")", $bootstrap_modules);
   }

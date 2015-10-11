@@ -417,7 +417,7 @@ function locale_get_plural($count, $langcode = NULL) {
   if (!isset($plurals[$langcode][$count])) {
     if (!isset($locale_formula[$langcode])) {
       $language_list = language_list();
-      if(isset($language_list[$langcode])) {
+      if (isset($language_list[$langcode])) {
         $locale_formula[$langcode] = $language_list[$langcode]->formula;
       }
     }

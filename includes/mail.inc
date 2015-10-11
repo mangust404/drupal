@@ -41,7 +41,7 @@
  *   function example_mail($key, &$message, $params) {
  *     $language = $message['language'];
  *     $variables = user_mail_tokens($params['account'], $language);
- *     switch($key) {
+ *     switch ($key) {
  *       case 'notice':
  *         $message['subject'] = t('Notification from !site', $variables, $language->language);
  *         $message['body'][] = t("Dear !username\n\nThere is new content available on the site.", $variables, $language->language);

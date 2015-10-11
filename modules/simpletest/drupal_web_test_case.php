@@ -122,7 +122,7 @@ abstract class DrupalTestCase {
     $db_prefix = $this->originalPrefix;
 
     // Add additional info if assertion is failed
-    if($status == 'fail' && !empty($message_on_fail)) {
+    if ($status == 'fail' && !empty($message_on_fail)) {
       $message .= "\n" . $message_on_fail . "\n\n";
     }
 
@@ -289,10 +289,10 @@ abstract class DrupalTestCase {
   }
 
   protected function getEqualityMessage($first, $second) {
-    if(is_array($first)) {
+    if (is_array($first)) {
       $message = t("Expected @first to match second array", array('@first' => var_export($first, TRUE)));
 
-      if(!is_array($second)) {
+      if (!is_array($second)) {
         return $message . t(' and second parameter is not an array: @value', array('@value' => var_export($second, TRUE)));
       }
 
@@ -304,24 +304,24 @@ abstract class DrupalTestCase {
       $extra = array_diff($second, $first);
       $missing = array_diff($first, $second);
 
-      if(count($extra) > 0) {
+      if (count($extra) > 0) {
         $message .= "Extra elements in second array: \n + '" . implode("'\n + '", $extra) . "'\n\n";
       }
-      if(count($missing) > 0) {
+      if (count($missing) > 0) {
         $message .= "Not found in second array: \n - '" . implode("'\n - '", $missing) . "'\n\n";
       }
 
-      if(empty($extra) && empty($missing)) {
+      if (empty($extra) && empty($missing)) {
         $message .= var_export($second, TRUE);
       }
       return $message;
     } else {
       $first = var_export($first, TRUE);
-      if(strlen($first) > 2048) {
+      if (strlen($first) > 2048) {
         $first = substr($first, 0, 2048) . '... (' . (strlen($first) - 2048) . ' chars)';
       }
       $second = var_export($second, TRUE);
-      if(strlen($second) > 2048) {
+      if (strlen($second) > 2048) {
         $second = substr($second, 0, 2048) . '... (' . (strlen($second) - 2048) . ' chars)';
       }
 
@@ -850,9 +850,10 @@ class DrupalWebTestCase extends DrupalTestCase {
       // static cache.
       $nodes[] = node_load($ar['nid'], FALSE, TRUE);
     }
-    if(count($nodes) == 1) {
+    if (count($nodes) == 1) {
       return current($nodes);
-    } else {
+    }
+    else {
       return $nodes;
     }
   }
@@ -1346,7 +1347,7 @@ class DrupalWebTestCase extends DrupalTestCase {
 //    drupal_install_modules(array('default'), TRUE);
     $task = 'profile';
     $func = $this->profile . '_profile_tasks';
-    if(function_exists($func)) {
+    if (function_exists($func)) {
       $func($task, '');
     }
 
@@ -1499,7 +1500,8 @@ class DrupalWebTestCase extends DrupalTestCase {
       if ($this->has_locale_module) {
         drupal_init_language();
         locale(NULL, NULL, TRUE);
-      } else if(function_exists('locale')) {
+      }
+      else if (function_exists('locale')) {
         // If test module included locale module then set language to en
         // so locale method will not be called.
         global $language;
@@ -2887,10 +2889,11 @@ class DrupalWebTestCase extends DrupalTestCase {
        
     }
     $message_on_fail = NULL;
-    if(!$result) {
-      if($not_exists) {
+    if (!$result) {
+      if ($not_exists) {
         $message_on_fail = t("Expected \"@text\"\n not to match string \"@search\"", array('@search' => $text, '@text' => $this->plainTextContent));
-      } else {
+      }
+      else {
         $message_on_fail = t("Expected \"@text\"\n to match string \"@search\"", array('@search' => $text, '@text' => $this->plainTextContent));
       }
     }
@@ -3496,12 +3499,12 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
   if ($message && $file_directory) {
     $new_filepath = $file_directory . "/simpletest/verbose/$class-$id.html";
 
-    if(!is_file($new_filepath) && is_file($filepath)) {
+    if (!is_file($new_filepath) && is_file($filepath)) {
       $prev_filepath = $filepath;
       $table_open = FALSE;
       
       // Flush all stored assertions to the verbose file
-      if(!$assertions_flushed) {
+      if (!$assertions_flushed) {
         simpletest_verbose_flush($prev_filepath);
       }
       $assertions_flushed = FALSE;
@@ -3540,30 +3543,30 @@ function simpletest_verbose_append($assertion) {
 function simpletest_verbose_flush($filepath = NULL) {
   static $verbose;
 
-  if(is_null($verbose)) {
+  if (is_null($verbose)) {
     // Initialize static variables
     $verbose = variable_get('simpletest_verbose', FALSE);
     $zebra = FALSE;
   }
 
-  if(empty($filepath)) {
+  if (empty($filepath)) {
     // Flush everything to the current verbose file
     $filepath = drupal_static('simpletest_verbose:filepath', '');
   }
 
   // Don't log anything if verbose mode is off or verbose file doesn't exists
-  if(!$verbose || empty($filepath) || !is_file($filepath)) {
+  if (!$verbose || empty($filepath) || !is_file($filepath)) {
     return;
   }
 
   $stored = &drupal_static('simpletest_verbose_append', array());
   $assertions_flushed = &drupal_static(__FUNCTION__ . ':assertions_flushed', FALSE);
 
-  if(empty($stored)) {
+  if (empty($stored)) {
     return;
   }
 
-  if(!$assertions_flushed || $assertions_flushed != $filepath) {
+  if (!$assertions_flushed || $assertions_flushed != $filepath) {
     // Open table output in a new verbose file and add styles
     file_put_contents($filepath, '<br /><hr /><br />' . "\n" .
       '<h2>' . t('Assertions:') . '</h2>' . "\n" .  
@@ -3572,7 +3575,7 @@ function simpletest_verbose_flush($filepath = NULL) {
   }
 
   $zebra = FALSE;
-  foreach($stored as $assertion) {
+  foreach ($stored as $assertion) {
     $row = array();
     $row[] = $assertion->message;
     $row[] = $assertion->message_group;

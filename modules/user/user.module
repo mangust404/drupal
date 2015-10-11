@@ -1892,7 +1892,7 @@ function user_roles($membersonly = FALSE, $permission = NULL) {
 function user_role_change_permissions($rid, array $permissions = array()) {
   $current_perms = db_fetch_array(db_query("SELECT * FROM {permission} WHERE rid = %d", $rid));
 
-  if(empty($current_perms)) {
+  if (empty($current_perms)) {
     $current_permissions = array();
   } else {
     $current_permissions = explode(', ', $current_perms['perm']);

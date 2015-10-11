@@ -1135,9 +1135,10 @@ function system_modules_uninstall_submit($form, &$form_state) {
   if (!empty($form['#confirmed'])) {
     // Call the uninstall routine for each selected module.
     $modules = array_keys($form_state['values']['uninstall']);
-    if(drupal_uninstall_modules($modules)) {
+    if (drupal_uninstall_modules($modules)) {
       drupal_set_message(t('The selected modules have been uninstalled.'));
-    } else {
+    }
+    else {
       drupal_set_message(t('Unable to uninstall selected modules.'));
     }
 
