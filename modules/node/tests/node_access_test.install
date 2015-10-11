@@ -41,7 +41,9 @@ function node_access_test_schema() {
   return $schema;
 }
 
+/**
+ * Implements hook_install().
+ */
 function node_access_test_install() {
-  // Create tables.
   drupal_install_schema('node_access_test');
 }

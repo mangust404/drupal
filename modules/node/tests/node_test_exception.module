@@ -1,0 +1,15 @@
+<?php
+
+/**
+ * @file
+ * A module implementing node related hooks to test API interaction.
+ */
+
+/**
+ * Implements hook_nodeapi().
+ */
+function node_test_exception_nodeapi(&$node, $op) {
+  if ($op == 'presave' && $node->title == 'testing_transaction_exception') {
+    throw new Exception('Test exception for rollback.');
+  }
+}

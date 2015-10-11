@@ -18,9 +18,39 @@
   - Schema API test
   - Tablesort test
   - Theme test
-- Modules tests:
+
+- Backported modules tests:
   - Aggregator
   - Blocks (full version from D7)
   - Blog
   - Book
   - Color
+  - Comment
+  - Contact
+  - Dblog
+  - Filter
+  - Forum
+  - Help
+  - Locale
+  - Node
+
+Module tests on the way:
+ - Menu
+ - OpenID
+ - Path
+ - PHP
+ - Ping
+ - Poll
+ - Profile
+ - Search
+ - Statistics
+ - Syslog
+ - System
+ - Taxonomy
+ - Throttle
+ - Tracker
+ - Translation
+ - Trigger
+ - Update
+ - Upload
+ - User

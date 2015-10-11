@@ -20,6 +20,8 @@ define('NODE_BUILD_SEARCH_INDEX', 2);
 define('NODE_BUILD_SEARCH_RESULT', 3);
 define('NODE_BUILD_RSS', 4);
 define('NODE_BUILD_PRINT', 5);
+define('NODE_PUBLISHED', 1);
+define('NODE_NOT_PUBLISHED', 0);
 
 /**
  * Implementation of hook_help().
@@ -707,7 +709,7 @@ function node_invoke_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
  *   A fully-populated node object.
  */
 function node_load($param = array(), $revision = NULL, $reset = NULL) {
-  static $nodes = array();
+  $nodes = &drupal_static(__FUNCTION__, array());
 
   if ($reset) {
     $nodes = array();
@@ -856,10 +858,12 @@ function node_submit($node) {
 
   if (user_access('administer nodes')) {
     // Populate the "authored by" field.
-    if ($account = user_load(array('name' => $node->name))) {
+    if (!empty($node->name) && ($account = user_load(array('name' => $node->name)))) {
       $node->uid = $account->uid;
     }
-    else {
+    else if (!isset($node->name) && !empty($node->uid)) {
+      // For the special case when nodes are importing, leave uid intact.
+    } else {
       $node->uid = 0;
     }
   }
@@ -873,12 +877,39 @@ function node_submit($node) {
  * Save a node object into the database.
  */
 function node_save(&$node) {
-  // Let modules modify the node before it is saved to the database.
-  node_invoke_nodeapi($node, 'presave');
+  // Load the stored entity, if any.
+  if (!empty($node->nid) && !isset($node->original)) {
+    $node->original = node_load($node->nid);
+  }
+
   global $user;
 
-  // Insert a new node.
-  $node->is_new = empty($node->nid);
+  // Determine if we will be inserting a new node.
+  if (!isset($node->is_new)) {
+    $node->is_new = empty($node->nid);
+  }
+
+  // For the same reasons, make sure we have $node->teaser and
+  // $node->body set.
+  if (!isset($node->teaser)) {
+    $node->teaser = '';
+  }
+  if (!isset($node->body)) {
+    $node->body = '';
+  }
+  $node->format = isset($node->format) ? $node->format : FILTER_FORMAT_DEFAULT;
+
+  if (empty($node->created)) {
+    $node->created = REQUEST_TIME;
+  }
+  // The changed timestamp is always updated for bookkeeping purposes (revisions, searching, ...)
+  $node->changed = REQUEST_TIME;
+
+  $node->timestamp = REQUEST_TIME;
+  $update_node = TRUE;
+
+  // Let modules modify the node before it is saved to the database.
+  node_invoke_nodeapi($node, 'presave');
 
   if ($node->is_new || !empty($node->revision)) {
     // When inserting a node, $node->log must be set because
@@ -896,47 +927,39 @@ function node_save(&$node) {
     unset($node->log);
   }
 
-  // For the same reasons, make sure we have $node->teaser and
-  // $node->body set.
-  if (!isset($node->teaser)) {
-    $node->teaser = '';
-  }
-  if (!isset($node->body)) {
-    $node->body = '';
-  }
-
-  // Save the old revision if needed.
+  // When saving a new node revision, unset any existing $node->vid so as to
+  // ensure that a new revision will actually be created, then store the old
+  // revision ID in a separate property for use by node hook implementations.
   if (!$node->is_new && !empty($node->revision) && $node->vid) {
     $node->old_vid = $node->vid;
+    unset($node->vid);
   }
-
-  $time = time();
-  if (empty($node->created)) {
-    $node->created = $time;
-  }
-  // The changed timestamp is always updated for bookkeeping purposes (revisions, searching, ...)
-  $node->changed = $time;
-
-  $node->timestamp = $time;
-  $node->format = isset($node->format) ? $node->format : FILTER_FORMAT_DEFAULT;
 
   // Generate the node table query and the node_revisions table query.
   if ($node->is_new) {
-    _node_save_revision($node, $user->uid);
     drupal_write_record('node', $node);
-    db_query('UPDATE {node_revisions} SET nid = %d WHERE vid = %d', $node->nid, $node->vid);
+    _node_save_revision($node, $user->uid);
     $op = 'insert';
   }
   else {
+    // For existing nodes, update the node record which matches the value of
+    // $node->nid.
     drupal_write_record('node', $node, 'nid');
+    // Then, if a new node revision was requested, save a new record for
+    // that; otherwise, update the node revision record which matches the
+    // value of $node->vid.
     if (!empty($node->revision)) {
       _node_save_revision($node, $user->uid);
-      db_query('UPDATE {node} SET vid = %d WHERE nid = %d', $node->vid, $node->nid);
     }
     else {
       _node_save_revision($node, $user->uid, 'vid');
+      $update_node = FALSE;
     }
     $op = 'update';
+  }
+
+  if ($update_node) {
+    db_query('UPDATE {node} SET vid = %d WHERE nid = %d', $node->vid, $node->nid);
   }
 
   // Call the node specific callback (if any).
@@ -946,8 +969,14 @@ function node_save(&$node) {
   // Update the node access table for this node.
   node_access_acquire_grants($node);
 
+  // Clear internal properties.
+  unset($node->is_new);
+  unset($node->original);
+
   // Clear the page and block caches.
   cache_clear_all();
+
+  drupal_static_reset('node_load');
 }
 
 /**
@@ -1165,8 +1194,8 @@ function node_search($op = 'search', $keys = NULL) {
       return;
 
     case 'status':
-      $total = db_result(db_query('SELECT COUNT(*) FROM {node} WHERE status = 1'));
-      $remaining = db_result(db_query("SELECT COUNT(*) FROM {node} n LEFT JOIN {search_dataset} d ON d.type = 'node' AND d.sid = n.nid WHERE n.status = 1 AND (d.sid IS NULL OR d.reindex <> 0)"));
+      $total = db_result(db_query('SELECT COUNT(*) FROM {node} WHERE status = %d', NODE_PUBLISHED));
+      $remaining = db_result(db_query("SELECT COUNT(*) FROM {node} n LEFT JOIN {search_dataset} d ON d.type = 'node' AND d.sid = n.nid WHERE n.status = %d AND (d.sid IS NULL OR d.reindex <> 0)", NODE_PUBLISHED));
       return array('remaining' => $remaining, 'total' => $total);
 
     case 'admin':
@@ -1206,7 +1235,7 @@ function node_search($op = 'search', $keys = NULL) {
       // Build matching conditions
       list($join1, $where1) = _db_rewrite_sql();
       $arguments1 = array();
-      $conditions1 = 'n.status = 1';
+      $conditions1 = 'n.status = ' . NODE_PUBLISHED;
 
       if ($type = search_query_extract($keys, 'type')) {
         $types = array();
@@ -1391,8 +1420,29 @@ function node_link($type, $node = NULL, $teaser = FALSE) {
 }
 
 function _node_revision_access($node, $op = 'view') {
-  static $access = array();
-  if (!isset($access[$node->vid])) {
+  $access = &drupal_static(__FUNCTION__, array());
+
+  $map = array(
+    'view' => 'view revisions',
+    'update' => 'revert revisions',
+    'delete' => 'delete revisions',
+  );
+
+  if (!$node || !isset($map[$op])) {
+    // If there was no node to check against, or the $op was not one of the
+    // supported ones, we return access denied.
+    return FALSE;
+  }
+
+  // Statically cache access by revision ID, user account ID, and operation.
+  $cid = $node->vid . ':' . $op;
+
+  if (!isset($access[$cid])) {
+    // Perform basic permission checks first.
+    if (!user_access($map[$op]) && !user_access('administer nodes')) {
+      return $access[$cid] = FALSE;
+    }
+
     $node_current_revision = node_load($node->nid);
     $is_current_revision = $node_current_revision->vid == $node->vid;
     // There should be at least two revisions. If the vid of the given node
@@ -1401,20 +1451,18 @@ function _node_revision_access($node, $op = 'view') {
     // Also, if you try to revert to or delete the current revision, that's
     // not good.
     if ($is_current_revision && (db_result(db_query('SELECT COUNT(vid) FROM {node_revisions} WHERE nid = %d', $node->nid)) == 1 || $op == 'update' || $op == 'delete')) {
-      $access[$node->vid] = FALSE;
+      $access[$cid] = FALSE;
     }
     elseif (user_access('administer nodes')) {
-      $access[$node->vid] = TRUE;
+      $access[$cid] = TRUE;
     }
     else {
-      $map = array('view' => 'view revisions', 'update' => 'revert revisions', 'delete' => 'delete revisions');
-      // First check the user permission, second check the access to the
-      // current revision and finally, if the node passed in is not the current
-      // revision then access to that, too.
-      $access[$node->vid] = isset($map[$op]) && user_access($map[$op]) && node_access($op, $node_current_revision) && ($is_current_revision || node_access($op, $node));
+      // First check the access to the current revision and finally, if the node
+      // passed in is not the current revision then access to that, too.
+      $access[$cid] = node_access($op, $node_current_revision) && ($is_current_revision || node_access($op, $node));
     }
   }
-  return $access[$node->vid];
+  return $access[$cid];
 }
 
 function _node_add_access() {
@@ -1502,6 +1550,9 @@ function node_menu() {
     'page callback' => 'node_feed',
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
+    // Pass a FALSE and array argument to ensure that additional path components
+    // are not passed to node_feed().
+    'page arguments' => array(FALSE, array()),
   );
   foreach (node_get_types('types', NULL, TRUE) as $type) {
     $type_url_str = str_replace('_', '-', $type->type);
@@ -1674,7 +1725,7 @@ function node_feed($nids = FALSE, $channel = array()) {
 
   if ($nids === FALSE) {
     $nids = array();
-    $result = db_query_range(db_rewrite_sql('SELECT n.nid, n.created FROM {node} n WHERE n.promote = 1 AND n.status = 1 ORDER BY n.created DESC'), 0, variable_get('feed_default_items', 10));
+    $result = db_query_range(db_rewrite_sql('SELECT n.nid, n.created FROM {node} n WHERE n.promote = 1 AND n.status = %d ORDER BY n.created DESC'), NODE_PUBLISHED, 0, variable_get('feed_default_items', 10));
     while ($row = db_fetch_object($result)) {
       $nids[] = $row->nid;
     }
@@ -1755,11 +1806,12 @@ function node_feed($nids = FALSE, $channel = array()) {
     'description' => variable_get('site_mission', ''),
     'language'    => $language->language
   );
+  $channel_extras = array_diff_key($channel, $channel_defaults);
   $channel = array_merge($channel_defaults, $channel);
 
   $output = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
   $output .= "<rss version=\"". $channel["version"] ."\" xml:base=\"". $base_url ."\" ". drupal_attributes($namespaces) .">\n";
-  $output .= format_rss_channel($channel['title'], $channel['link'], $channel['description'], $items, $channel['language']);
+  $output .= format_rss_channel($channel['title'], $channel['link'], $channel['description'], $items, $channel['language'], $channel_extras);
   $output .= "</rss>\n";
 
   drupal_set_header('Content-Type: application/rss+xml; charset=utf-8');
@@ -1770,7 +1822,7 @@ function node_feed($nids = FALSE, $channel = array()) {
  * Menu callback; Generate a listing of promoted nodes.
  */
 function node_page_default() {
-  $result = pager_query(db_rewrite_sql('SELECT n.nid, n.sticky, n.created FROM {node} n WHERE n.promote = 1 AND n.status = 1 ORDER BY n.sticky DESC, n.created DESC'), variable_get('default_nodes_main', 10));
+  $result = pager_query(db_rewrite_sql('SELECT n.nid, n.sticky, n.created FROM {node} n WHERE n.promote = 1 AND n.status = %d ORDER BY n.sticky DESC, n.created DESC'), variable_get('default_nodes_main', 10), 0, NULL, NODE_PUBLISHED);
 
   $output = '';
   $num_rows = FALSE;
@@ -2216,7 +2268,10 @@ function node_db_rewrite_sql($query, $primary_table, $primary_field) {
  */
 function node_access_acquire_grants($node) {
   $grants = module_invoke_all('node_access_records', $node);
-  if (empty($grants)) {
+  // Let modules alter the grants.
+  drupal_alter('node_access_records', $grants, $node);
+  // If no grants are set and the node is published, then use the default grant.
+  if (empty($grants) && !empty($node->status)) {
     $grants[] = array('realm' => 'all', 'gid' => 0, 'grant_view' => 1, 'grant_update' => 0, 'grant_delete' => 0);
   }
   else {
@@ -2264,7 +2319,7 @@ function node_access_write_grants($node, $grants, $realm = NULL, $delete = TRUE)
   }
 
   // Only perform work when node_access modules are active.
-  if (count(module_implements('node_grants'))) {
+  if (!empty($grants) && count(module_implements('node_grants'))) {
     foreach ($grants as $grant) {
       if ($realm && $realm != $grant['realm']) {
         continue;
@@ -2636,7 +2691,7 @@ function node_action_info() {
  * Sets the status of a node to 1, meaning published.
  */
 function node_publish_action(&$node, $context = array()) {
-  $node->status = 1;
+  $node->status = NODE_PUBLISHED;
   watchdog('action', 'Set @type %title to published.', array('@type' => node_get_types('name', $node), '%title' => $node->title));
 }
 
@@ -2645,7 +2700,7 @@ function node_publish_action(&$node, $context = array()) {
  * Sets the status of a node to 0, meaning unpublished.
  */
 function node_unpublish_action(&$node, $context = array()) {
-  $node->status = 0;
+  $node->status = NODE_NOT_PUBLISHED;
   watchdog('action', 'Set @type %title to unpublished.', array('@type' => node_get_types('name', $node), '%title' => $node->title));
 }
 
@@ -2780,7 +2835,7 @@ function node_unpublish_by_keyword_action_submit($form, $form_state) {
 function node_unpublish_by_keyword_action($node, $context) {
   foreach ($context['keywords'] as $keyword) {
     if (strstr(node_view(drupal_clone($node)), $keyword) || strstr($node->title, $keyword)) {
-      $node->status = 0;
+      $node->status = NODE_NOT_PUBLISHED;
       watchdog('action', 'Set @type %title to unpublished.', array('@type' => node_get_types('name', $node), '%title' => $node->title));
       break;
     }

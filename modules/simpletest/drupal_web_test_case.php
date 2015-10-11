@@ -2530,6 +2530,25 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
+   * Pass if a link containing a given href (part) is not found.
+   *
+   * @param $href
+   *   The full or partial value of the 'href' attribute of the anchor tag.
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to, defaults to 'Other'.
+   *
+   * @return
+   *   TRUE if the assertion succeeded, FALSE otherwise.
+   */
+  protected function assertNoLinkByHref($href, $message = '', $group = 'Other') {
+    $links = $this->xpath('//a[contains(@href, :href)]', array(':href' => $href));
+    $message = ($message ?  $message : t('No link containing href %href found.', array('%href' => $href)));
+    return $this->assert(empty($links), $message, $group);
+  }
+
+  /**
    * Follows a link by name.
    *
    * Will click the first link found with this link text by default, or a
