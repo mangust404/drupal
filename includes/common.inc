@@ -5773,10 +5773,12 @@ function drupal_schema_fields_sql($table, $prefix = NULL) {
  *   The object to write. This is a reference, as defaults according to
  *   the schema may be filled in on the object, as well as ID on the serial
  *   type(s). Both array an object types may be passed.
- * @param $update
- *   If this is an update, specify the primary keys' field names. It is the
- *   caller's responsibility to know if a record for this object already
- *   exists in the database. If there is only 1 key, you may pass a simple string.
+ * @param $primary_keys
+ *   To indicate that this is a new record to be inserted, omit this argument.
+ *   If this is an update, this argument specifies the primary keys' field
+ *   names. If there is only 1 field in the key, you may pass in a string; if
+ *   there are multiple fields in the key, pass in an array.
+ *
  * @return
  *   Failure to write a record will return FALSE. Otherwise SAVED_NEW or
  *   SAVED_UPDATED is returned depending on the operation performed. The
@@ -5784,10 +5786,10 @@ function drupal_schema_fields_sql($table, $prefix = NULL) {
  *   the $table. For example, $object->nid will be populated after inserting
  *   a new node.
  */
-function drupal_write_record($table, &$object, $update = array()) {
-  // Standardize $update to an array.
-  if (is_string($update)) {
-    $update = array($update);
+function drupal_write_record($table, &$object, $primary_keys = array()) {
+  // Standardize $primary_keys to an array.
+  if (is_string($primary_keys)) {
+    $primary_keys = array($primary_keys);
   }
 
   $schema = drupal_get_schema($table);
@@ -5804,63 +5806,81 @@ function drupal_write_record($table, &$object, $update = array()) {
     $array = FALSE;
   }
 
-  $fields = $defs = $values = $serials = $placeholders = array();
+  $fields = $values = $serials = $placeholders = array();
 
   // Go through our schema, build SQL, and when inserting, fill in defaults for
   // fields that are not set.
   foreach ($schema['fields'] as $field => $info) {
-    // Special case -- skip serial types if we are updating.
-    if ($info['type'] == 'serial' && count($update)) {
+    if ($info['type'] == 'serial') {
+      // Skip serial types if we are updating.
+      if (!empty($primary_keys)) {
+        continue;
+      }
+      // Track serial field so we can helpfully populate them after the query.
+      $serials[] = $field;
+
+      // Unset null primary keys.
+      if (property_exists($object, $field) && is_null($object->$field)) {
+        continue;
+      }
+    }
+
+    // Skip field if it is in $primary_keys as it is unnecessary to update a
+    // field to the value it is already set to.
+    if (in_array($field, $primary_keys)) {
       continue;
     }
 
     // For inserts, populate defaults from Schema if not already provided
-    if (!property_exists($object, $field) && !count($update) && isset($info['default'])) {
+    if (!property_exists($object, $field) && !count($primary_keys) && isset($info['default'])) {
       $object->$field = $info['default'];
     }
 
-    // Track serial fields so we can helpfully populate them after the query.
-    if ($info['type'] == 'serial') {
-      $serials[] = $field;
-      // Ignore values for serials when inserting data. Unsupported.
-      unset($object->$field);
+    if (!property_exists($object, $field)) {
+      // Skip fields that are not provided, default values are already known
+      // by the database.
+      continue;
+    }
+
+    // Build array of fields to update or insert.
+    if (empty($info['serialize'])) {
+      $fields[$field] = $object->$field;
+    }
+    else {
+      $fields[$field] = serialize($object->$field);
     }
 
     // Build arrays for the fields, placeholders, and values in our query.
-    if (property_exists($object, $field)) {
-      if(is_null($object->$field) && empty($info['not null'])) {
-        /// field may take NULL values
-        $fields[] = $field;
-        $placeholders[] = '%s';
-        $values[] = 'NULL';
-      } else {
-        $fields[] = $field;
-        $placeholders[] = db_type_placeholder($info['type']);
-        if (empty($info['serialize'])) {
-          $values[] = $object->$field;
-        }
-        else {
-          $values[] = serialize($object->$field);
-        }
-      }
+    if(is_null($fields[$field]) && empty($info['not null'])) {
+      /// field may take NULL values
+      $placeholders[] = '%s';
+      $values[] = 'NULL';
+    } else {
+      $placeholders[] = db_type_placeholder($info['type']);
+      $values[] = $fields[$field];
     }
   }
+
+  if (empty($fields)) {
+    return;
+  }
+
   // Build the SQL.
   $query = '';
-  if (!count($update)) {
-    $query = "INSERT INTO {". $table ."} (". implode(', ', $fields) .') VALUES ('. implode(', ', $placeholders) .')';
+  if (empty($primary_keys)) {
+    $query = "INSERT INTO {". $table ."} (". implode(', ', array_keys($fields)) .') VALUES ('. implode(', ', $placeholders) .')';
     $return = SAVED_NEW;
   }
   else {
     $query = '';
-    foreach ($fields as $id => $field) {
+    foreach (array_keys($fields) as $id => $field) {
       if ($query) {
         $query .= ', ';
       }
       $query .= $field .' = '. $placeholders[$id];
     }
 
-    foreach ($update as $key){
+    foreach ($primary_keys as $key){
       $conditions[] = "$key = ". db_type_placeholder($schema['fields'][$key]['type']);
       $values[] = $object->$key;
     }
@@ -5868,13 +5888,16 @@ function drupal_write_record($table, &$object, $update = array()) {
     $query = "UPDATE {". $table ."} SET $query WHERE ". implode(' AND ', $conditions);
     $return = SAVED_UPDATED;
   }
-
   // Execute the SQL.
   if (db_query($query, $values)) {
-    if ($serials) {
+    if (!empty($serials)) {
       // Get last insert ids and fill them in.
       foreach ($serials as $field) {
-        $object->$field = db_last_insert_id($table, $field);
+        // Don't populate primary key in the cases when function is called in 
+        // the "Import" mode with non-empty primary key field and empty $primary_keys.
+        if ((!isset($object->$field) || empty($object->$field)) && empty($primary_keys)) {
+          $object->$field = db_last_insert_id($table, $field);
+        }
       }
     }
   }

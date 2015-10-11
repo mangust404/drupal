@@ -16,8 +16,8 @@ function node_schema() {
         'description' => 'The current {node_revisions}.vid version identifier.',
         'type' => 'int',
         'unsigned' => TRUE,
-        'not null' => TRUE,
-        'default' => 0),
+        'not null' => FALSE,
+        'default' => NULL),
       'type' => array(
         'description' => 'The {node_type}.type of this node.',
         'type' => 'varchar',

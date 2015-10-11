@@ -2737,6 +2737,19 @@ function system_update_6055() {
 }
 
 /**
+ * Set default null for node.vid.
+ */
+function system_update_6056() {
+  $ret = array();
+  if ($GLOBALS['db_type'] == 'pgsql') {
+    $ret[] = update_sql('ALTER TABLE {node} ALTER vid DROP NOT NULL, ALTER vid SET DEFAULT NULL');
+  } else {
+    $ret[] = update_sql('ALTER TABLE {node} MODIFY vid int unsigned NULL DEFAULT NULL');
+  }
+  return $ret;
+}
+
+/**
  * @} End of "defgroup updates-6.x-extra".
  * The next series of updates should start at 7000.
  */

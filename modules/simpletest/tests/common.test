@@ -2635,6 +2635,28 @@ class DrupalDataApiTest extends DrupalWebTestCase {
     // Update the record.
     $update_result = drupal_write_record('node_access', $node_access, array('nid', 'gid', 'realm'));
     $this->assertTrue($update_result == SAVED_UPDATED, 'Correct value returned when a record is updated with drupal_write_record() for a table with a multi-field primary key.');
+
+    // Insert a record in "Import" mode (when primary key is predefined).
+    $person = new stdClass();
+    $max_id = db_result(db_query('SELECT MAX(id) FROM {test}'));
+    $person_id = $max_id + mt_rand(1000, 1000000);
+    $person->id = $person_id;
+    $person->name = 'Second John';
+    $insert_result = drupal_write_record('test', $person);
+    $this->assertEqual($insert_result, SAVED_NEW, 'Correct value returned when a record is inserted with drupal_write_record() with predefined id.');
+    $this->assertTrue(isset($person->id), 'Primary key is set on record created with drupal_write_record().');
+    $this->assertEqual($person->id, $person_id, 'Age field set to default value.');
+    $loaded_person = db_fetch_object(db_query("SELECT * FROM {test} WHERE id = %d", $person_id));
+    $this->assertEqual($loaded_person, $person, 'Loaded object and saved are the same');
+
+    // Insert a record with NULL primary key.
+    $person = new stdClass();
+    $person->id = NULL;
+    $person->name = 'John Null';
+    $insert_result = drupal_write_record('test', $person);
+    $this->assertEqual($insert_result, SAVED_NEW, 'Correct value returned when a record is inserted with drupal_write_record() with predefined id.');
+    $loaded_person = db_fetch_object(db_query("SELECT * FROM {test} WHERE id = %d", $person->id));
+    $this->assertEqual($loaded_person, $person, 'Loaded object and saved are the same');
   }
 
 }
