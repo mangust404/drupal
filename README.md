@@ -32,10 +32,10 @@
   - Forum
   - Help
   - Locale
+  - Menu
   - Node
 
 Module tests on the way:
- - Menu
  - OpenID
  - Path
  - PHP
