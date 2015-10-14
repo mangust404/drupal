@@ -34,10 +34,10 @@
   - Locale
   - Menu
   - Node
+  - Path
 
 Module tests on the way:
  - OpenID
- - Path
  - PHP
  - Ping
  - Poll

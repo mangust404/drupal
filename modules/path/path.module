@@ -105,7 +105,8 @@ function path_set_alias($path = NULL, $alias = NULL, $pid = NULL, $language = ''
    * duplicates by the below code. Watchdog errors are now logged instead.
    */
   $path = urldecode($path);
-  $alias = urldecode($alias);
+  // D6 doesn't allow aliases like "%23%25%26%2B%2F%3F" when the line above is uncommented.
+  //$alias = urldecode($alias);
   // First we check if we deal with an existing alias and delete or modify it based on pid.
   if ($pid) {
     // An existing alias.
