@@ -35,10 +35,10 @@
   - Menu
   - Node
   - Path
+  - PHP
 
 Module tests on the way:
  - OpenID
- - PHP
  - Ping
  - Poll
  - Profile
