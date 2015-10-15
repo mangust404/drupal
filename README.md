@@ -36,11 +36,11 @@
   - Node
   - Path
   - PHP
+  - Poll
 
 Module tests on the way:
  - OpenID
  - Ping
- - Poll
  - Profile
  - Search
  - Statistics
