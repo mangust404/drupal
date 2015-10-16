@@ -37,11 +37,9 @@
   - Path
   - PHP
   - Poll
+  - Profile
 
 Module tests on the way:
- - OpenID
- - Ping
- - Profile
  - Search
  - Statistics
  - Syslog
@@ -54,3 +52,7 @@ Module tests on the way:
  - Update
  - Upload
  - User
+
+Modules without tests:
+ - OpenID (not significant)
+ - Ping (not present in D7)
