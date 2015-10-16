@@ -1465,6 +1465,44 @@ function drupal_get_messages($type = NULL, $clear_queue = TRUE) {
 }
 
 /**
+ * Gets the title of the current page.
+ *
+ * The title is displayed on the page and in the title bar.
+ *
+ * @return
+ *   The current page's title.
+ */
+function drupal_get_title() {
+  $title = drupal_set_title();
+
+  // During a bootstrap, menu.inc is not included and thus we cannot provide a title.
+  if (!isset($title) && function_exists('menu_get_active_title')) {
+    $title = check_plain(menu_get_active_title());
+  }
+
+  return $title;
+}
+
+/**
+ * Set the title of the current page, for display on the page and in the title bar.
+ *
+ * @param $title
+ *   Optional string value to assign to the page title; or if set to NULL
+ *   (default), leaves the current title unchanged.
+ *
+ * @return
+ *   The updated title of the current page.
+ */
+function drupal_set_title($title = NULL) {
+  static $stored_title;
+
+  if (isset($title)) {
+    $stored_title = $title;
+  }
+  return $stored_title;
+}
+
+/**
  * Perform an access check for a given mask and rule type. Rules are usually
  * created via admin/user/rules page.
  *
@@ -1653,7 +1691,7 @@ function _drupal_bootstrap($phase) {
         }
       }
 
-      $cache_mode = variable_get('cache', CACHE_DISABLED);
+      $cache_mode = (int) variable_get('cache', CACHE_DISABLED);
       
       $cache_enabled = $cache_mode && !isset($_COOKIE[session_name()]);
       // Get the page from the cache.
@@ -1670,6 +1708,9 @@ function _drupal_bootstrap($phase) {
         if ($cache) {
           // D7 compatibility
           header('X-Drupal-Cache: HIT');
+          // Restore the metadata cached with the page.
+          $_GET['q'] = $cache->data['path'];
+          drupal_set_title($cache->data['title']);
 
           drupal_serve_page_from_cache($cache);
           // If the skipping of the bootstrap hooks is not enforced, call hook_exit.
@@ -1694,6 +1735,10 @@ function _drupal_bootstrap($phase) {
 
     case DRUPAL_BOOTSTRAP_LANGUAGE:
       drupal_init_language();
+      break;
+
+    case DRUPAL_BOOTSTRAP_PATH:
+      require_once './includes/path.inc';
       break;
 
     case DRUPAL_BOOTSTRAP_FULL:

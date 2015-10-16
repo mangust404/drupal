@@ -37,6 +37,15 @@ function statistics_help($path, $arg) {
 }
 
 /**
+ * Implementation of hook_boot().
+ *
+ * Dummy function to tell Drupal that statistics module should be
+ * a bootstrap module and incompatible with the aggressive cache.
+ */
+function statistics_boot() {
+}
+
+/**
  * Implementation of hook_exit().
  *
  * This is where statistics are gathered on page accesses.
@@ -59,8 +68,20 @@ function statistics_exit() {
     }
   }
   if ((variable_get('statistics_enable_access_log', 0)) && (module_invoke('throttle', 'status') == 0)) {
+    drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
+    include_once DRUPAL_ROOT . '/includes/unicode.inc';
+
     // Log this page access.
-    db_query("INSERT INTO {accesslog} (title, path, url, hostname, uid, sid, timer, timestamp) values('%s', '%s', '%s', '%s', %d, '%s', %d, %d)", strip_tags(drupal_get_title()), $_GET['q'], referer_uri(), ip_address(), $user->uid, session_id(), timer_read('page'), time());
+    db_query("INSERT INTO {accesslog} (title, path, url, hostname, uid, sid, timer, timestamp) VALUES ('%s', '%s', '%s', '%s', %d, '%s', %d, %d)", 
+      truncate_utf8(strip_tags(drupal_get_title()), 255), 
+      truncate_utf8($_GET['q'], 255), 
+      referer_uri(), 
+      ip_address(), 
+      $user->uid, 
+      session_id(), 
+      (int) timer_read('page'), 
+      time()
+    );
   }
 }
 

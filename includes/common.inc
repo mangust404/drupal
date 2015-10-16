@@ -4427,7 +4427,6 @@ function _drupal_bootstrap_full() {
     return;
   }
   $called = 1;
-  require_once './includes/path.inc';
   require_once './includes/theme.inc';
   require_once './includes/pager.inc';
   require_once './includes/menu.inc';

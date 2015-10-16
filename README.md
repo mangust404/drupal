@@ -39,9 +39,9 @@
   - Poll
   - Profile
   - Search
+  - Statistics
 
 Module tests on the way:
- - Statistics
  - Syslog
  - System
  - Taxonomy

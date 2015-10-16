@@ -190,42 +190,6 @@ function arg($index = NULL, $path = NULL) {
 }
 
 /**
- * Get the title of the current page, for display on the page and in the title bar.
- *
- * @return
- *   The current page's title.
- */
-function drupal_get_title() {
-  $title = drupal_set_title();
-
-  // during a bootstrap, menu.inc is not included and thus we cannot provide a title
-  if (!isset($title) && function_exists('menu_get_active_title')) {
-    $title = check_plain(menu_get_active_title());
-  }
-
-  return $title;
-}
-
-/**
- * Set the title of the current page, for display on the page and in the title bar.
- *
- * @param $title
- *   Optional string value to assign to the page title; or if set to NULL
- *   (default), leaves the current title unchanged.
- *
- * @return
- *   The updated title of the current page.
- */
-function drupal_set_title($title = NULL) {
-  static $stored_title;
-
-  if (isset($title)) {
-    $stored_title = $title;
-  }
-  return $stored_title;
-}
-
-/**
  * Check if the current page is the front page.
  *
  * @return

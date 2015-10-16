@@ -44,7 +44,8 @@ function module_iterate($function, $argument = '') {
  *   modules.
  */
 function module_list($refresh = FALSE, $bootstrap = TRUE, $sort = FALSE, $fixed_list = NULL) {
-  static $list, $sorted_list;
+  $list = &drupal_static(__FUNCTION__ . ':list');
+  $sorted_list = &drupal_static(__FUNCTION__ . ':sorted_list');
 
   if ($refresh || $fixed_list) {
     $list = array();
