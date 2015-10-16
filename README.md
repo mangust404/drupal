@@ -40,9 +40,9 @@
   - Profile
   - Search
   - Statistics
+  - Syslog
 
 Module tests on the way:
- - Syslog
  - System
  - Taxonomy
  - Throttle
