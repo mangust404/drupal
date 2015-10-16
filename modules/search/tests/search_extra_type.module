@@ -1,0 +1,51 @@
+<?php
+
+/**
+ * @file
+ * Dummy module implementing a search type for search module testing.
+ */
+
+/**
+ * Implements hook_search_info().
+ */
+function search_extra_type_search($op = 'search', $keys = NULL) {
+  switch ($op) {
+    case 'name': 
+      return 'Dummy search type';
+    case 'search':
+      // This is a dummy search, so when search "executes", we just return a dummy
+      // result containing the keywords and a list of conditions.
+      if (!$keys) {
+        $keys = '';
+      }
+      return array(
+        array(
+          'link' => url('node'),
+          'type' => 'Dummy result type',
+          'title' => 'Dummy title',
+          'snippet' => "Dummy search snippet to display. Keywords: {$keys}\n\n",
+        ),
+      );
+      break;
+  }
+}
+
+/**
+ * Implements hook_search_page().
+ *
+ * Adds some text to the search page so we can verify that it runs.
+ */
+function search_extra_type_search_page($results) {
+  $output['prefix']['#markup'] = '<h2>Test page text is here</h2> <ol class="search-results">';
+  $output['prefix']['#weight'] = -999;
+
+  foreach ($results as $entry) {
+    $entry['#theme'] = 'search_result';
+    $entry['#module'] = 'search_extra_type';
+    $output[] = $entry;
+  }
+  $output['suffix']['#markup'] = '</ol>' . theme('pager');
+  $output['suffix']['#weight'] = 999;
+
+  return drupal_render($output);
+}

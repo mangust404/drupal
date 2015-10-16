@@ -38,9 +38,9 @@
   - PHP
   - Poll
   - Profile
+  - Search
 
 Module tests on the way:
- - Search
  - Statistics
  - Syslog
  - System

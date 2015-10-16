@@ -12,7 +12,7 @@ function search_view($type = 'node') {
   // Search form submits with POST but redirects to GET. This way we can keep
   // the search query URL clean as a whistle:
   // search/type/keyword+keyword
-  if (!isset($_POST['form_id'])) {
+  if (!isset($_POST['form_id']) || $_POST['form_id'] != 'search_form') {
     if ($type == '') {
       // Note: search/node can not be a default tab because it would take on the
       // path of its parent (search). It would prevent remembering keywords when

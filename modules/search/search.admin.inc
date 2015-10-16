@@ -33,6 +33,13 @@ function search_wipe_confirm_submit(&$form, &$form_state) {
  * @see search_admin_settings_validate()
  */
 function search_admin_settings() {
+  $form['search_and_or_limit'] = array(
+    '#title' => t('Search terms limit'),
+    '#type' => 'textfield',
+    '#default_value' => variable_get('search_and_or_limit', 7),
+    '#element_validate' => array('element_validate_integer_positive'),
+    '#description' => t('How many terms user may use for a single search. This number is limited for the purpose of Denial-of-service protection.')
+  );
   // Collect some stats
   $remaining = 0;
   $total = 0;
@@ -58,7 +65,7 @@ function search_admin_settings() {
   // Indexing settings:
   $form['indexing_settings'] = array('#type' => 'fieldset', '#title' => t('Indexing settings'));
   $form['indexing_settings']['info'] = array('#value' => t('<p><em>Changing the settings below will cause the site index to be rebuilt. The search index is not cleared but systematically updated to reflect the new settings. Searching will continue to work but new content won\'t be indexed until all existing content has been re-indexed.</em></p><p><em>The default settings should be appropriate for the majority of sites.</em></p>'));
-  $form['indexing_settings']['minimum_word_size'] = array('#type' => 'textfield', '#title' => t('Minimum word length to index'), '#default_value' => variable_get('minimum_word_size', 3), '#size' => 5, '#maxlength' => 3, '#description' => t('The number of characters a word has to be to be indexed. A lower setting means better search result ranking, but also a larger database. Each search query must contain at least one keyword that is this size (or longer).'));
+  $form['indexing_settings']['minimum_word_size'] = array('#type' => 'textfield', '#title' => t('Minimum word length to index'), '#default_value' => variable_get('minimum_word_size', 3), '#size' => 5, '#maxlength' => 3, '#description' => t('The number of characters a word has to be to be indexed. A lower setting means better search result ranking, but also a larger database. Each search query must contain at least one keyword that is this size (or longer).'), '#element_validate' => array('element_validate_integer_positive'));
   $form['indexing_settings']['overlap_cjk'] = array('#type' => 'checkbox', '#title' => t('Simple CJK handling'), '#default_value' => variable_get('overlap_cjk', TRUE), '#description' => t('Whether to apply a simple Chinese/Japanese/Korean tokenizer based on overlapping sequences. Turn this off if you want to use an external preprocessor for this instead. Does not affect other languages.'));
 
   $form['#validate'] = array('search_admin_settings_validate');

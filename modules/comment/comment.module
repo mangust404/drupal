@@ -626,7 +626,7 @@ function comment_nodeapi(&$node, $op, $arg = 0) {
 
     case 'update index':
       $text = '';
-      $comments = db_query('SELECT subject, comment, format FROM {comments} WHERE nid = %d AND status = %d', $node->nid, COMMENT_PUBLISHED);
+      $comments = db_query('SELECT c.subject, c.comment, c.format FROM {comments} c LEFT JOIN {node} n ON c.nid = n.nid WHERE c.nid = %d AND c.status = %d AND n.comment > %d', $node->nid, COMMENT_PUBLISHED, COMMENT_NODE_DISABLED);
       while ($comment = db_fetch_object($comments)) {
         $text .= '<h2>'. check_plain($comment->subject) .'</h2>'. check_markup($comment->comment, $comment->format, FALSE);
       }
