@@ -472,8 +472,6 @@ abstract class DrupalTestCase {
    */
   public function run($run_method = NULL) {
     global $current_test_method;
-    // Initialize verbose debugging.
-    simpletest_verbose(NULL, file_directory_path(), get_class($this));
 
     // HTTP auth settings (<username>:<password>) for the simpletest browser
     // when sending requests to the test site.
@@ -490,6 +488,9 @@ abstract class DrupalTestCase {
       // If the current method starts with "test", run it - it's a test.
       if (strtolower(substr($method, 0, 4)) == 'test' && 
              ($run_method === NULL || $method == $run_method) ) {
+        // Initialize verbose debugging.
+        simpletest_verbose(NULL, file_directory_path(), get_class($this), $method);
+
         $current_test_method = $method;
 
         $this->setUp();
@@ -702,6 +703,8 @@ class DrupalUnitTestCase extends DrupalTestCase {
     global $db_prefix, $conf;
     // Flush all active assertions
     simpletest_verbose_flush();
+    simpletest_verbose_postprocess();
+
     if (preg_match('/simpletest\d+/', $db_prefix)) {
 //      $conf['file_public_path'] = $this->originalFileDirectory;
       $conf['file_directory_path'] = $this->originalFileDirectory;
@@ -1462,6 +1465,7 @@ class DrupalWebTestCase extends DrupalTestCase {
 
     // Flush all active assertions
     simpletest_verbose_flush();
+    simpletest_verbose_postprocess();
 
     // In case a fatal error occured that was not in the test process read the
     // log to pick up any fatal errors.
@@ -1481,6 +1485,9 @@ class DrupalWebTestCase extends DrupalTestCase {
 //      file_unmanaged_delete_recursive(file_directory_path());
       simpletest_clean_temporary_directory(file_directory_path());
 
+      // Reset module_implements() internal cache otherwise modules which was being
+      // uninstalled during tests will throw errors about unexisting tables.
+      module_implements('', FALSE, TRUE);
       // Remove all prefixed tables (all the tables in the schema).
       $schema = drupal_get_schema(NULL, TRUE);
       $ret = array();
@@ -3282,8 +3289,8 @@ class DrupalWebTestCase extends DrupalTestCase {
  * @see DrupalTestCase->originalFileDirectory
  * @see DrupalWebTestCase->verbose()
  */
-function simpletest_verbose($message, $original_file_directory = NULL, $test_class = NULL) {
-  static $file_directory, $verbose, $class, $id;
+function simpletest_verbose($message, $original_file_directory = NULL, $test_class = NULL, $test_method = NULL) {
+  static $file_directory, $verbose, $class, $method, $id;
   $id = &drupal_static(__FUNCTION__ . ':id', 1);
   $filepath = &drupal_static(__FUNCTION__ . ':filepath', '');
   $prev_filepath = &drupal_static(__FUNCTION__ . ':prev_filepath', FALSE);
@@ -3295,7 +3302,7 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
   }
 
   if ($message && $file_directory) {
-    $new_filepath = $file_directory . "/simpletest/verbose/$class-$id.html";
+    $new_filepath = $file_directory . '/simpletest/verbose/' . simpletest_get_verbose_file_name($class, $method, $id);
 
     if (!is_file($new_filepath) && is_file($filepath)) {
       $prev_filepath = $filepath;
@@ -3310,7 +3317,10 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
 
     $filepath = $new_filepath;
 
-    $message = '<hr />ID #' . $id . ' (<a href="' . $class . '-' . ($id - 1) . '.html">Previous</a> | <a href="' . $class . '-' . ($id + 1) . '.html">Next</a>)<hr />' . $message;
+    $message = '<hr />ID #' . $id . ' (<a href="' . simpletest_get_verbose_file_name($class, $method, $id - 1) . '">Previous</a>' . 
+      ' | <a href="' . simpletest_get_verbose_file_name($class, $method, $id + 1) . '">Next</a>) ' . 
+      '&nbsp;&nbsp;&nbsp;<!--prev_error_placeholder--><!--next_prev_errors_divider--><!--next_error_placeholder-->' . 
+      '<hr />' . $message;
     file_put_contents($filepath, $message, FILE_APPEND);
     return $id++;
   }
@@ -3318,8 +3328,15 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
   if ($original_file_directory) {
     $file_directory = $original_file_directory;
     $class = $test_class;
+    $method = $test_method;
     $verbose = variable_get('simpletest_verbose', FALSE);
     $directory = $file_directory . '/simpletest/verbose';
+
+    // Clean previous verbose messages for the test
+    foreach(glob($file_directory . "/simpletest/verbose/$class-$method-*") as $file) {
+      unlink($file);
+    }
+
     simpletest_verbose_flush();
     include_once(drupal_get_path('module', 'simpletest') . '/simpletest.pages.inc');
 //    return file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
@@ -3328,6 +3345,17 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
   return FALSE;
 }
 
+/**
+ * Append assertion to the current verbose file.
+ *
+ * The the assertion data will be stored in static cache until it will be
+ * flushed to the verbose file.
+ *
+ * @param $assertion
+ *   Assertion object.
+ * @see DrupalWebTestCase->assert()
+ * @see DrupalWebTestCase->verbose()
+ */
 function simpletest_verbose_append($assertion) {
   if (preg_match('/<a [^>]+>' . 'Verbose message' . '/', $assertion->message)) {
     // Don't include "Verbose message" in the verbose messages
@@ -3338,6 +3366,19 @@ function simpletest_verbose_append($assertion) {
   $stored[] = $assertion;
 }
 
+/**
+ * Flush all active assertions into verbose file.
+ *
+ * For each verbose message all related assertions will be printed above
+ * all verbose data so you can easily determine where is an assertion error.
+ *
+ * @param $filepath
+ *   A path to the verbose file to flush. For NULL value flush the latest
+ *   verbose file. Not required.
+ * @see DrupalWebTestCase->verbose()
+ * @see simpletest_verbose()
+ * @see DrupalWebTestCase->tearDown()
+ */
 function simpletest_verbose_flush($filepath = NULL) {
   static $verbose;
 
@@ -3395,4 +3436,113 @@ function simpletest_verbose_flush($filepath = NULL) {
   $stored = array();
 
   $assertions_flushed = $filepath;
+}
+
+/**
+ * Postprocess verbose messages files.
+ *
+ * The function adds "Previous error" and "Next error" links at the top
+ * of the verbose page so you can easily find verbose messages with failed
+ * assertions. Very useful when a test case includes a hundreds of assertions.
+ *
+ * @see DrupalWebTestCase->verbose()
+ * @see DrupalUnitTestCase->tearDown()
+ * @see simpletest_verbose_flush()
+ */
+function simpletest_verbose_postprocess() {
+  // Get the latest verbose message filepath.
+  $filepath = drupal_static('simpletest_verbose:filepath', '');
+
+  // Get latest file index.
+  $pos = strrpos($filepath, '-');
+  $ending = substr($filepath, $pos + 1);
+  list($last_index, ) = explode('.', $ending);
+
+  // Get file prefix.
+  $prefix = substr($filepath, 0, $pos);
+  $filename_prefix = basename($prefix);
+
+  // Files contents cache
+  $contents = array();
+  $changed = array();
+
+  $prev_error_id = NULL;
+  // Remember last two errors to show "previous error" on the page with error.
+  $prev2_error_id = NULL;
+
+  // Get all files data and initialize array of changes.
+  for ($i = 1; $i < $last_index + 1; $i++) {
+    $contents[$i] = file_get_contents($prefix . '-' . $i . '.html');
+    $changed[$i] = 0;
+  }
+
+  // Generate "Previous error" by iterating files ascendantly.
+  for ($i = 1; $i < $last_index + 1; $i++) {
+    if (strpos($contents[$i], '<tr class="simpletest-fail') !== FALSE || 
+        strpos($contents[$i], '<tr class="simpletest-exception') !== FALSE) {
+      if (!empty($prev_error_id)) {
+        $prev2_error_id = $prev_error_id;
+      }
+      $prev_error_id = $i;
+    }
+
+    if (!empty($prev_error_id) && $prev_error_id != $i) {
+      $contents[$i] = str_replace('<!--prev_error_placeholder-->', '<a style="color: red;" href="' . $filename_prefix . '-' . $prev_error_id . '.html">&lt; Previous error (#' . $prev_error_id . ')</a>', $contents[$i]);
+      $changed[$i]++;
+    }
+    else if ($prev_error_id == $i && !empty($prev2_error_id)) {
+      $contents[$i] = str_replace('<!--prev_error_placeholder-->', '<a style="color: red;" href="' . $filename_prefix . '-' . $prev2_error_id . '.html">&lt; Previous error (#' . $prev2_error_id . ')</a>', $contents[$i]);
+      $changed[$i]++;
+    }
+  }
+
+  $next_error_id = NULL;
+  // Remember two next errors to show "next error" on the page with error.
+  $next2_error_id = NULL;
+  // Generate "Next error" by iterating files descendantly.
+  for ($i = $last_index; $i > 0; $i--) {
+    if (strpos($contents[$i], '<tr class="simpletest-fail') !== FALSE || 
+        strpos($contents[$i], '<tr class="simpletest-exception') !== FALSE) {
+      if (!empty($next_error_id)) {
+        $next2_error_id = $next_error_id;
+      }
+      $next_error_id = $i;
+    }
+
+    if (!empty($next_error_id) && $next_error_id != $i) {
+      $contents[$i] = str_replace('<!--next_error_placeholder-->', '<a style="color: red;" href="' . $filename_prefix . '-' . $next_error_id . '.html">Next error (#' . $next_error_id . ') &gt;</a>', $contents[$i]);
+      $changed[$i]++;
+    }
+    else if ($next_error_id == $i && !empty($next2_error_id)) {
+      $contents[$i] = str_replace('<!--next_error_placeholder-->', '<a style="color: red;" href="' . $filename_prefix . '-' . $next2_error_id . '.html">Next error (#' . $next2_error_id . ') &gt;</a>', $contents[$i]);
+      $changed[$i]++;
+    }
+  }
+
+  // Flush all changes to verbose files
+  foreach($changed as $i => $changes) {
+    if ($changes > 0) {
+      if($changes > 1) {
+        $contents[$i] = str_replace('<!--next_prev_errors_divider-->', ' | ', $contents[$i]);
+      }
+      file_put_contents($prefix . '-' . $i . '.html', $contents[$i]);
+    }
+  }
+}
+
+/**
+ * Helper function to generate verbose file name.
+ * @param $class
+ *   A test case class name, e.g. "SystemThemeFunctionalTest".
+ * @param $method
+ *   Running test case method, e.g. "testThemeSettings".
+ * @param $id
+ *   Verbose message id, from 1 to eternity.
+ * @see DrupalWebTestCase->verbose()
+ * @see simpletest_verbose()
+ * @see DrupalWebTestCase->tearDown()
+ *
+ */
+function simpletest_get_verbose_file_name($class, $method, $id) {
+  return "$class-$method-$id.html";
 }
