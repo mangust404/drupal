@@ -67,7 +67,7 @@ function _drupal_error_handler_real($error_level, $message, $filename, $line, $c
       '%type' => isset($types[$error_level]) ? $severity_msg : 'Unknown error',
       // The standard PHP error handler considers that the error messages
       // are HTML. We mimick this behavior here.
-      '!message' => filter_xss_admin($message),
+      '%message' => filter_xss_admin($message),
       '%function' => $caller['function'],
       '%file' => $caller['file'],
       '%line' => $caller['line'],
@@ -115,7 +115,7 @@ function _drupal_decode_exception($exception) {
     '%type' => get_class($exception),
     // The standard PHP exception handler considers that the exception message
     // is plain-text. We mimick this behavior here.
-    '!message' => check_plain($message),
+    '%message' => check_plain($message),
     '%function' => $caller['function'],
     '%file' => $caller['file'],
     '%line' => $caller['line'],
@@ -132,7 +132,7 @@ function _drupal_decode_exception($exception) {
  *   An error message.
  */
 function _drupal_render_exception_safe($exception) {
-  return check_plain(strtr('%type: !message in %function (line %line of %file).', _drupal_decode_exception($exception)));
+  return check_plain(strtr('%type: %message in %function (line %line of %file).', _drupal_decode_exception($exception)));
 }
 
 /**
@@ -162,16 +162,16 @@ function error_displayable($error = NULL) {
  * Logs a PHP error or exception and displays an error page in fatal cases.
  *
  * @param $error
- *   An array with the following keys: %type, !message, %function, %file, %line
+ *   An array with the following keys: %type, %message, %function, %file, %line
  *   and severity_level. All the parameters are plain-text, with the exception
- *   of !message, which needs to be a safe HTML string.
+ *   of %message, which needs to be a safe HTML string.
  * @param $fatal
  *   TRUE if the error is fatal.
  */
 function _drupal_log_error($error, $fatal = FALSE) {
   // Initialize a maintenance theme if the bootstrap was not complete.
   // Do it early because drupal_set_message() triggers a drupal_theme_initialize().
-  if ($fatal && (drupal_get_bootstrap_phase() != DRUPAL_BOOTSTRAP_FULL)) {
+  if ($fatal && (drupal_bootstrap() != DRUPAL_BOOTSTRAP_FULL)) {
     unset($GLOBALS['theme']);
     if (!defined('MAINTENANCE_MODE')) {
       define('MAINTENANCE_MODE', 'error');
@@ -187,7 +187,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
     // as it uniquely identifies each PHP error.
     static $number = 0;
     $assertion = array(
-      $error['!message'],
+      $error['%message'],
       $error['%type'],
       array(
         'function' => $error['%function'],
@@ -199,7 +199,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
     $number++;
   }
 
-  watchdog('php', '%type: !message in %function (line %line of %file).', $error, $error['severity_level']);
+  watchdog('php', '%type: %message in %function (line %line of %file).', $error, $error['severity_level']);
 
   if ($fatal) {
     drupal_add_http_header('Status', '500 Service unavailable (with message)');
@@ -208,7 +208,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
   if (drupal_is_cli()) {
     if ($fatal) {
       // When called from CLI, simply output a plain text message.
-      print html_entity_decode(strip_tags(t('%type: !message in %function (line %line of %file).', $error))). "\n";
+      print html_entity_decode(strip_tags(t('%type: %message in %function (line %line of %file).', $error))). "\n";
       exit;
     }
   }
@@ -217,7 +217,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
     if ($fatal) {
       if (error_displayable($error)) {
         // When called from JavaScript, simply output the error message.
-        print t('%type: !message in %function (line %line of %file).', $error);
+        print t('%type: %message in %function (line %line of %file).', $error);
       }
       exit;
     }
@@ -235,7 +235,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
         $class = 'status';
       }
 
-      drupal_set_message(t('%type: !message in %function (line %line of %file).', $error), $class);
+      drupal_set_message(t('%type: %message in %function (line %line of %file).', $error), $class);
     }
 
     if ($fatal) {

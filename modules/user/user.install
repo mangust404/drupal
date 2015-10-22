@@ -224,7 +224,7 @@ function user_schema() {
       ),
       'timezone' => array(
         'type' => 'varchar',
-        'length' => 8,
+        'length' => 32,
         'not null' => FALSE,
         'description' => "User's timezone.",
       ),
@@ -294,3 +294,8 @@ function user_schema() {
   return $schema;
 }
 
+function user_update_6500() {
+  $ret = array();
+  db_change_field($ret, 'users', 'timezone', 'timezone', array('type' => 'varchar', 'length' => 32, 'not null' => FALSE));
+  return $ret;
+}

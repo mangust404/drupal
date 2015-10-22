@@ -292,7 +292,7 @@ function system_test_system_info_alter(&$info, $file) {
     }
     if ($file->name == 'common_test') {
       $info['hidden'] = FALSE;
-      $info['version'] = '7.x-2.4-beta3';
+      $info['version'] = '6.x-2.4-beta3';
     }
   }
 
@@ -453,7 +453,7 @@ function system_test_drupal_set_message() {
   // Remove the first.
   unset($_SESSION['messages']['status'][0]);
 
-  return '';
+  return '123';
 }
 
 /**

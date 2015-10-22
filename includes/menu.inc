@@ -2563,12 +2563,16 @@ function _menu_site_is_offline() {
   // Check if site is set to off-line mode.
   if (variable_get('site_offline', 0)) {
     // Check if the user has administration privileges.
-    if (user_access('administer site configuration')) {
+    if (user_access('access site in maintenance mode')) {
       // Ensure that the off-line message is displayed only once [allowing for
       // page redirects], and specifically suppress its display on the site
       // maintenance page.
       if (drupal_get_normal_path($_GET['q']) != 'admin/settings/site-maintenance') {
-        drupal_set_message(l(t('Operating in off-line mode.'), 'admin/settings/site-maintenance'), 'status', FALSE);
+        if (user_access('administer site configuration')) {
+          drupal_set_message(t('Operating in maintenance mode. <a href="@url">Go online.</a>', array('@url' => url('admin/settings/site-maintenance'))), 'status', FALSE);
+        } else {
+          drupal_set_message(t('Operating in maintenance mode.'), 'status', FALSE);
+        }
       }
     }
     else {

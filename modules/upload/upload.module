@@ -626,9 +626,8 @@ function upload_js() {
   );
 
   $empty_form_state = array();
-  $data = &$form;
-  $data['__drupal_alter_by_ref'] = array(&$empty_form_state);
-  drupal_alter('form', $data, 'upload_js');
+  $id = 'upload_js';
+  drupal_alter('form', $form, $id);
 
   $form_state = array('submitted' => FALSE);
   $form = form_builder('upload_js', $form, $form_state);

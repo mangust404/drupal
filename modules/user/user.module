@@ -2648,18 +2648,13 @@ function user_register() {
     // and never touch it on user edit pages.
     $form['timezone'] = array(
       '#type' => 'hidden',
+      '#attributes' => array('class' => 'timezone-detect'),
       '#default_value' => variable_get('date_default_timezone', NULL),
       '#id' => 'edit-user-register-timezone',
     );
 
-    // Add the JavaScript callback to automatically set the timezone.
-    drupal_add_js('
-// Global Killswitch
-if (Drupal.jsEnabled) {
-  $(document).ready(function() {
-    Drupal.setDefaultTimezone();
-  });
-}', 'inline');
+    // Add the JavaScript which automatically set the timezone.
+    drupal_add_js('misc/timezone.js');
   }
 
   $form['submit'] = array('#type' => 'submit', '#value' => t('Create new account'), '#weight' => 30);

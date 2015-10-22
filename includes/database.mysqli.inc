@@ -105,7 +105,7 @@ function _db_query($query, $debug = 0) {
     // code is issueing the slow query.
     $bt = debug_backtrace();
     // t() may not be available yet so we don't wrap 'Anonymous'
-    $name = $user->uid ? $user->name : variable_get('anonymous', 'Anonymous');
+    $name = is_object($user) && !empty($user->uid) ? $user->name : variable_get('anonymous', 'Anonymous');
     // str_replace() to prevent SQL injection via username or anonymous name.
     $name = str_replace(array('*', '/'), '', $name);
     $query = '/* '. $name .' : '. $bt[2]['function'] .' */ '. $query;

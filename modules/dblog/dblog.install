@@ -58,7 +58,7 @@ function dblog_schema() {
         'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
-        'size' => 'tiny',
+        'size' => 'medium',
         'description' => 'The severity level of the event; ranges from 0 (Emergency) to 7 (Debug)',
       ),
       'link' => array(
@@ -117,3 +117,9 @@ function dblog_update_6000() {
  * @} End of "addtogroup updates-6.x-extra".
  * The next series of updates should start at 7000.
  */
+
+function dblog_update_6500() {
+  $ret = array();
+  db_change_field($ret, 'watchdog', 'severity', 'severity', array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'size' => 'medium'));
+  return $ret;
+}

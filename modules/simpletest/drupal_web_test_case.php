@@ -1373,6 +1373,8 @@ class DrupalWebTestCase extends DrupalTestCase {
     variable_set('install_task', 'profile-finished');
     variable_set('clean_url', $clean_url_original);
     variable_set('site_mail', 'simpletest@example.com');
+    variable_set('date_default_timezone', date_default_timezone_get());
+
 //    // Set up English language.
 //    unset($GLOBALS['conf']['language_default']);
 //    $language = language_default();

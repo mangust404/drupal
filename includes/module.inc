@@ -217,6 +217,7 @@ function system_list_reset() {
   drupal_static_reset('system_rebuild_module_data');
   drupal_static_reset('list_themes');
   drupal_static_reset('_system_theme_data');
+  drupal_static_reset('system_region_list');
   system_theme_data();
   cache_clear_all('bootstrap_modules', 'cache');
   cache_clear_all('system_list', 'cache');
@@ -539,6 +540,7 @@ function module_disable($module_list, $disable_dependents = TRUE) {
       module_load_install($module);
       module_invoke($module, 'disable');
       db_query("UPDATE {system} SET status = %d, throttle = %d WHERE type = '%s' AND name = '%s'", 0, 0, 'module', $module);
+      watchdog('system', '%module module disabled.', array('%module' => $module), WATCHDOG_INFO);
       $invoke_modules[] = $module;
     }
   }

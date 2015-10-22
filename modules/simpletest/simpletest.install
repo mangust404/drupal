@@ -141,27 +141,8 @@ function simpletest_requirements($phase) {
     $requirements['php_domdocument']['description'] =t('SimpleTest requires the DOMDocument class to be available. Please check the configure command at the <a href="@link-phpinfo">PHP info page</a>.', array('@link-phpinfo' => url('admin/reports/status/php')));
   }
 
-  // Drupal 6.
-  // Check that the global variable is defined signifying that the code was inserted correctly.
-  if (isset($GLOBALS['simpletest_installed'])) {
-     $requirements['simpletest_settings'] = array(
-      'title' => $t('SimpleTest code addition'),
-      'value' => t('Found'),
-      'severity' => REQUIREMENT_OK
-    );
-  }
-  else {
-    $requirements['simpletest_settings'] = array(
-      'title' => $t('SimpleTest code addition'),
-      'value' => t('Not-found'),
-      'severity' => REQUIREMENT_ERROR,
-      'description' => $t('SimpleTest could not be installed. Must apply core patch, please see
-                           <a href="@install">INSTALL.txt</a>.',
-                           array('%settings' => realpath(conf_path() . '/settings.php'),
-                                 '@install' => base_path() . drupal_get_path('module', 'simpletest') . '/INSTALL.txt')),
-    );
-  }
-
+  // Simpletest integrated in D6 core now.
+  
   return $requirements;
 }
 

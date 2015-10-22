@@ -358,7 +358,7 @@ function system_theme_settings(&$form_state, $key = '') {
     // files table as a temporary file. We'll make a copy and let the garbage
     // collector delete the original upload.
     if (file_copy($file, $filename, FILE_EXISTS_REPLACE)) {
-      $_POST['default_logo'] = 0;
+      unset($_POST['default_logo']);
       $_POST['logo_path'] = $file->filepath;
       $_POST['toggle_logo'] = 1;
     }
@@ -373,7 +373,7 @@ function system_theme_settings(&$form_state, $key = '') {
     // files table as a temporary file. We'll make a copy and let the garbage
     // collector delete the original upload.
     if (file_copy($file, $filename)) {
-      $_POST['default_favicon'] = 0;
+      unset($_POST['default_favicon']);
       $_POST['favicon_path'] = $file->filepath;
       $_POST['toggle_favicon'] = 1;
     }
@@ -553,6 +553,61 @@ function system_theme_settings(&$form_state, $key = '') {
   return $form;
 }
 
+function system_theme_settings_validate($form, &$form_state) {
+  // If the user provided a path for a logo or favicon file, make sure a file
+  // exists at that path.
+  if (!empty($form_state['values']['logo_path'])) {
+    $path = _system_theme_settings_validate_path($form_state['values']['logo_path']);
+    if (!$path) {
+      form_set_error('logo_path', t('The custom logo path is invalid.'));
+    }
+  }
+  if (!empty($form_state['values']['favicon_path'])) {
+    $path = _system_theme_settings_validate_path($form_state['values']['favicon_path']);
+    if (!$path) {
+      form_set_error('favicon_path', t('The custom favicon path is invalid.'));
+    }
+  }
+}
+
+/**
+ * Helper function for the system_theme_settings form.
+ *
+ * Attempts to validate normal system paths, paths relative to the public files
+ * directory, or stream wrapper URIs. If the given path is any of the above,
+ * returns a valid path or URI that the theme system can display.
+ *
+ * @param $path
+ *   A path relative to the Drupal root or to the public files directory, or
+ *   a stream wrapper URI.
+ * @return mixed
+ *   A valid path that can be displayed through the theme system, or FALSE if
+ *   the path could not be validated.
+ */
+function _system_theme_settings_validate_path($path) {
+  // Absolute local file paths are invalid.
+  if (realpath($path) == $path) {
+    return FALSE;
+  }
+  // A path relative to the Drupal root or a fully qualified URI is valid.
+  if (is_file($path)) {
+    return $path;
+  }
+  // If file contains base path check that file exists without it.
+  if (strpos($path, base_path()) === 0) {
+    $path = substr($path, strlen(base_path()));
+  }
+  if (is_file($path)) {
+    return $path;
+  }
+  // Absolute urls with valid schema are valid
+  $url_info = parse_url($path);
+  if (isset($url_info['scheme']) && !empty($url_info['scheme']) && in_array($url_info['scheme'], array('http', 'https'))) {
+    return $path;
+  }
+  return FALSE;
+}
+
 /**
  * Process system_theme_settings form submissions.
  */
@@ -696,20 +751,29 @@ function system_modules($form_state = array()) {
 
     $dependencies = array();
     // Check for missing dependencies.
-    if (is_array($file->info['dependencies'])) {
-      foreach ($file->info['dependencies'] as $dependency) {
+    if (!empty($file->requires)) {
+      foreach ($file->requires as $dependency => $v) {
+        $requires_name = isset($files[$dependency])? $files[$dependency]->info['name']: drupal_ucfirst($dependency);
         if (!isset($files[$dependency])) {
-          $dependencies[] = t('@module (<span class="admin-missing">missing</span>)', array('@module' => drupal_ucfirst($dependency)));
+          $dependencies[] = t('@module (<span class="admin-missing">missing</span>)', array('@module' => $requires_name));
+          $disabled[] = $filename;
+          $form['disabled_modules']['#value'][$filename] = FALSE;
+        }
+        elseif (isset($files[$dependency]) && ($incompatible_version = drupal_check_incompatibility($v, str_replace(DRUPAL_CORE_COMPATIBILITY . '-', '', $files[$dependency]->info['version'])))) {
+          $dependencies[] = t('@module (<span class="admin-missing">incompatible with</span> version @version)', array(
+            '@module' => $requires_name . $incompatible_version,
+            '@version' => $files[$dependency]->info['version'],
+          ));
           $disabled[] = $filename;
           $form['disabled_modules']['#value'][$filename] = FALSE;
         }
         // Only display visible modules.
         elseif (isset($visible_files[$dependency])) {
           if ($files[$dependency]->status) {
-            $dependencies[] = t('@module (<span class="admin-enabled">enabled</span>)', array('@module' => $files[$dependency]->info['name']));
+            $dependencies[] = t('@module (<span class="admin-enabled">enabled</span>)', array('@module' => $requires_name));
           }
           else {
-            $dependencies[] = t('@module (<span class="admin-disabled">disabled</span>)', array('@module' => $files[$dependency]->info['name']));
+            $dependencies[] = t('@module (<span class="admin-disabled">disabled</span>)', array('@module' => $requires_name));
           }
         }
       }
@@ -726,7 +790,7 @@ function system_modules($form_state = array()) {
 
     // Mark dependents disabled so user can not remove modules being depended on.
     $dependents = array();
-    foreach ($file->info['dependents'] as $dependent) {
+    foreach ($file->required_by as $dependent => $dependent_info) {
       // Hidden modules are unset already.
       if (isset($visible_files[$dependent])) {
         if ($files[$dependent]->status == 1) {
@@ -884,7 +948,6 @@ function system_modules_submit($form, &$form_state) {
     // They don't appear because disabled checkboxes are not submitted
     // by browsers.
     $form_state['values']['status'] = array_merge($form_state['values']['status'], $form_state['values']['disabled_modules']);
-
     // Check values for dependency that we can't install.
     if ($dependencies = system_module_build_dependencies($form_state['values']['validation_modules'], $form_state['values'])) {
       // These are the modules that depend on existing modules.
@@ -945,13 +1008,22 @@ function system_modules_submit($form, &$form_state) {
     module_disable($disable_modules);
   }
 
-  // Install new modules.
+  // Collect data for all modules to be able to determine dependencies.
+  $files = system_rebuild_module_data();
+
+  // Check modules requirements by calling hook_requirements('install').
   foreach ($new_modules as $key => $module) {
     if (!drupal_check_module($module)) {
       unset($new_modules[$key]);
+      foreach (array_keys($files[$module]->required_by) as $required_by) {
+        if ($key = array_search($required_by, $new_modules)) {
+          unset($new_modules[$key]);
+        }
+      }
     }
   }
 
+  // Install new modules.
   drupal_install_modules($new_modules);
 
   $current_module_list = module_list(TRUE, FALSE);
@@ -998,7 +1070,7 @@ function system_module_build_dependencies($modules, $form_values) {
     foreach ($modules as $name => $module) {
       // If the module is disabled, will be switched on and it has dependencies.
       if (!$module->status && $form_values['status'][$name] && isset($module->info['dependencies'])) {
-        foreach ($module->info['dependencies'] as $dependency) {
+        foreach ($module->requires as $dependency => $v) {
           if (!$form_values['status'][$dependency] && isset($modules[$dependency])) {
             if (!isset($dependencies[$name])) {
               $dependencies[$name] = array();
@@ -1045,14 +1117,10 @@ function system_modules_uninstall($form_state = NULL) {
     // Grab the module info
     $info = unserialize($module->info);
 
-    // Load the .install file, and check for an uninstall hook.
-    // If the hook exists, the module can be uninstalled.
-    module_load_install($module->name);
-    if (module_hook($module->name, 'uninstall')) {
-      $form['modules'][$module->name]['name'] = array('#value' => $info['name'] ? $info['name'] : $module->name);
+    // All modules should be available to uninstall.
+    $form['modules'][$module->name]['name'] = array('#value' => $info['name'] ? $info['name'] : $module->name);
       $form['modules'][$module->name]['description'] = array('#value' => t($info['description']));
-      $options[$module->name] = '';
-    }
+    $options[$module->name] = '';
   }
 
   // Only build the rest of the form if there are any modules available to uninstall.
@@ -2076,7 +2144,7 @@ function theme_system_modules($form) {
       if (isset($form['status']['#incompatible_modules_core'][$key])) {
         unset($form['status'][$key]);
         $status = theme('image', 'misc/watchdog-error.png', t('incompatible'), t('Incompatible with this version of Drupal core'));
-        $description .= '<div class="incompatible">'. t('This version is incompatible with the !core_version version of Drupal core.', array('!core_version' => VERSION)) .'</div>';
+        $description .= '<div class="incompatible">'. t('!module is incompatible with the !core_version version of Drupal core.', array('!module' => $module['name'], '!core_version' => VERSION)) .'</div>';
       }
       elseif (isset($form['status']['#incompatible_modules_php'][$key])) {
         unset($form['status'][$key]);
@@ -2241,4 +2309,15 @@ function theme_system_themes_form($form) {
   $output = theme('table', $header, $rows);
   $output .= drupal_render($form);
   return $output;
+}
+
+/**
+ * Menu callback; Retrieve a JSON object containing a suggested time zone name.
+ */
+function system_timezone($abbreviation = '', $offset = -1, $is_daylight_saving_time = NULL) {
+  // An abbreviation of "0" passed in the callback arguments should be
+  // interpreted as the empty string.
+  $abbreviation = $abbreviation ? $abbreviation : '';
+  $timezone = timezone_name_from_abbr($abbreviation, intval($offset), $is_daylight_saving_time);
+  print drupal_to_js($timezone);
 }

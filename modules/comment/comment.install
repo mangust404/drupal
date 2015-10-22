@@ -247,3 +247,17 @@ function comment_schema() {
 
   return $schema;
 }
+
+/**
+ * Implementation of hook_install().
+ */
+function comment_install() {
+  drupal_install_schema('comment');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function comment_uninstall() {
+  drupal_uninstall_schema('comment');
+}

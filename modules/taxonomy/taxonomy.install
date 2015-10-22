@@ -283,3 +283,16 @@ function taxonomy_schema() {
   return $schema;
 }
 
+/**
+ * Implementation of hook_install().
+ */
+function taxonomy_install() {
+  drupal_install_schema('taxonomy');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function taxonomy_uninstall() {
+  drupal_uninstall_schema('taxonomy');
+}

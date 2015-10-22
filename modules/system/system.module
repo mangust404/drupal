@@ -120,7 +120,7 @@ function system_theme() {
  * Implementation of hook_perm().
  */
 function system_perm() {
-  return array('administer site configuration', 'access administration pages', 'administer actions', 'access site reports', 'select different theme', 'administer files');
+  return array('administer site configuration', 'access administration pages', 'administer actions', 'access site reports', 'select different theme', 'administer files', 'access site in maintenance mode');
 }
 
 /**
@@ -182,6 +182,13 @@ function system_menu() {
     'page callback' => 'file_download',
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
+  );
+  $items['system/timezone'] = array(
+    'title' => 'Time zone',
+    'page callback' => 'system_timezone',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'file' => 'system.admin.inc',
   );
   $items['admin'] = array(
     'title' => 'Administer',
@@ -665,12 +672,13 @@ function system_add_module_assets() {
  *
  * Allows users to individually set their theme and time zone.
  */
-function system_user($type, $edit, &$user, $category = NULL) {
+function system_user($type, $edit, &$account, $category = NULL) {
+  global $user;
   if ($type == 'form' && $category == 'account') {
     $form['theme_select'] = system_theme_select_form(t('Selecting a different theme will change the look and feel of the site.'), isset($edit['theme']) ? $edit['theme'] : NULL, 2);
 
     if (variable_get('configurable_timezones', 1)) {
-      $zones = _system_zonelist();
+      $zones = _system_zonelist($account->uid != $user->uid);
       $form['timezone'] = array(
         '#type' => 'fieldset',
         '#title' => t('Locale settings'),
@@ -684,6 +692,10 @@ function system_user($type, $edit, &$user, $category = NULL) {
         '#options' => $zones,
         '#description' => t('Select your current local time. Dates and times throughout this site will be displayed using this time zone.'),
       );
+      if (empty($account->timezone) || !isset($zones[$account->timezone])) {
+        $form['timezone']['timezone']['#attributes']['class'] = 'timezone-detect';
+        drupal_add_js('misc/timezone.js');
+      }
     }
 
     return $form;
@@ -974,7 +986,6 @@ function system_update_files_database(&$files, $type) {
  *   array is returned.
  *
  * @see system_rebuild_module_data()
- * @see system_rebuild_theme_data()
  */
 function system_get_info($type, $name = NULL) {
   $info = array();
@@ -1059,7 +1070,6 @@ function system_theme_data() {
   // If lock not acquired, return $themes data without writing to database.
   if ($write_database) {
     $filenames = array();
-
     foreach ($themes as $theme) {
       // Record the filename of each theme that was found.
       $filenames[] = $theme->filename;
@@ -1121,7 +1131,8 @@ function _system_theme_data() {
 
       // Invoke hook_system_info_alter() to give installed modules a chance to
       // modify the data in the .info files if necessary.
-      drupal_alter('system_info', $themes[$key]->info, $themes[$key]);
+      $type = 'theme';
+      drupal_alter('system_info', $themes[$key]->info, $themes[$key], $type);
 
       if (!empty($themes[$key]->info['base theme'])) {
         $sub_themes[] = $key;
@@ -1286,7 +1297,7 @@ function system_find_base_theme($themes, $key, $used_keys = array()) {
  *   An array of regions in the form $region['name'] = 'description'.
  */
 function system_region_list($theme_key) {
-  static $list = array();
+  $list = &drupal_static(__FUNCTION__, array());
 
   if (!array_key_exists($theme_key, $list)) {
     $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = 'theme' AND name = '%s'", $theme_key)));
@@ -1470,11 +1481,18 @@ function confirm_form($form, $question, $path, $description = NULL, $yes = NULL,
 
   // Prepare cancel link
   $query = $fragment = NULL;
+  
+  // Prepare cancel link.
+  if (isset($_GET['destination'])) {
+    $path = drupal_parse_url(urldecode($_GET['destination']));
+  }
+  
   if (is_array($path)) {
     $query = isset($path['query']) ? $path['query'] : NULL;
     $fragment = isset($path['fragment']) ? $path['fragment'] : NULL;
     $path = isset($path['path']) ? $path['path'] : NULL;
   }
+
   $cancel = l($no ? $no : t('Cancel'), $path, array('query' => $query, 'fragment' => $fragment));
 
   drupal_set_title($question);
@@ -2175,15 +2193,23 @@ function system_goto_action($object, $context) {
 
 /**
  * Generate an array of time zones and their local time&date.
+ *
+ * @param $blank
+ *   If evaluates true, prepend an empty time zone option to the array.
  */
-function _system_zonelist() {
-  $timestamp = time();
-  $zonelist = array(-11, -10, -9.5, -9, -8, -7, -6, -5, -4.5, -4, -3.5, -3, -2.5, -2, -1, 0, 1, 2, 3, 3.5, 4, 5, 5.5, 5.75, 6, 6.5, 7, 8, 9, 9.5, 10, 10.5, 11, 11.5, 12, 12.75, 13, 14);
-  $zones = array();
-  foreach ($zonelist as $offset) {
-    $zone = $offset * 3600;
-    $zones[$zone] = format_date($timestamp, 'custom', variable_get('date_format_long', 'l, F j, Y - H:i') .' O', $zone);
+function _system_zonelist($blank = NULL) {
+  $zonelist = timezone_identifiers_list();
+  $zones = $blank ? array('' => t('- None selected -')) : array();
+  foreach ($zonelist as $zone) {
+    // Because many time zones exist in PHP only for backward compatibility
+    // reasons and should not be used, the list is filtered by a regular
+    // expression.
+    if (preg_match('!^((Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific)/|UTC$)!', $zone)) {
+      $zones[$zone] = t('@zone: @date', array('@zone' => t(str_replace('_', ' ', $zone)), '@date' => format_date(REQUEST_TIME, 'custom', variable_get('date_format_long', 'l, F j, Y - H:i') . ' O', $zone)));
+    }
   }
+  // Sort the translated time zones alphabetically.
+  asort($zones);
   return $zones;
 }
 
@@ -2366,7 +2392,6 @@ function _system_update_bootstrap_status() {
  *   The $info array with prefixed values.
  *
  * @see _system_rebuild_module_data()
- * @see _system_rebuild_theme_data()
  */
 function _system_info_add_path($info, $path) {
   foreach ($info as $key => $value) {

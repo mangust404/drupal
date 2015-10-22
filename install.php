@@ -769,9 +769,9 @@ function install_tasks($profile, $task) {
 if (Drupal.jsEnabled) {
   $(document).ready(function() {
     Drupal.cleanURLsInstallCheck();
-    Drupal.setDefaultTimezone();
   });
 }', 'inline');
+      drupal_add_js('misc/timezone.js');
       // Build menu to allow clean URL check.
       menu_rebuild();
     }
@@ -1108,6 +1108,7 @@ function install_configure_form(&$form_state, $url) {
     '#options' => _system_zonelist(),
     '#description' => st('By default, dates in this site will be displayed in the chosen time zone.'),
     '#weight' => 5,
+    '#attributes' => array('class' => 'timezone-detect'),
   );
 
   $form['server_settings']['clean_url'] = array(

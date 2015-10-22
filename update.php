@@ -565,24 +565,37 @@ function update_task_list($active = NULL) {
 }
 
 /**
+ * Returns and stores extra requirements that apply during the update process.
+ */
+function update_extra_requirements($requirements = NULL) {
+  static $extra_requirements = array();
+  if (isset($requirements)) {
+    $extra_requirements += $requirements;
+  }
+  return $extra_requirements;
+}
+
+/**
  * Check update requirements and report any errors.
  */
-function update_check_requirements() {
-  // Check the system module requirements only.
-  $requirements = module_invoke('system', 'requirements', 'update');
+function update_check_requirements($skip_warnings = FALSE) {
+  // Check requirements of all loaded modules.
+  $requirements = module_invoke_all('requirements', 'update');
+  $requirements += update_extra_requirements();
   $severity = drupal_requirements_severity($requirements);
 
-  // If there are issues, report them.
-  if ($severity != REQUIREMENT_OK) {
-    foreach ($requirements as $requirement) {
-      if (isset($requirement['severity']) && $requirement['severity'] != REQUIREMENT_OK) {
-        $message = isset($requirement['description']) ? $requirement['description'] : '';
-        if (isset($requirement['value']) && $requirement['value']) {
-          $message .= ' (Currently using '. $requirement['title'] .' '. $requirement['value'] .')';
-        }
-        drupal_set_message($message, 'warning');
-      }
+  // If there are issues which we can't ignore, report them.
+  if (($severity == REQUIREMENT_ERROR || ($severity == REQUIREMENT_WARNING && !$skip_warnings)) && 
+      (empty($_GET['op']) || ($_GET['op'] == 'info' && !$skip_warnings))) {
+    update_task_list('requirements');
+    drupal_set_title('Requirements problem');
+    $status_report = theme('status_report', $requirements);
+    $status_report .= 'Check the error messages and <a href="' . check_url('update.php') . '">try again</a>.';
+    if($severity != REQUIREMENT_ERROR) {
+      $status_report .= '<br /><a href="' . check_url('update.php?continue=1&op=info') . '">Continue anyway</a>';
     }
+    print theme('update_page', $status_report);
+    exit();
   }
 }
 
@@ -619,7 +632,7 @@ if (empty($op)) {
   drupal_maintenance_theme();
 
   // Check the update requirements for Drupal.
-  update_check_requirements();
+  update_check_requirements(TRUE);
 
   // Display the warning messages (if any) in a dedicated maintenance page,
   // or redirect to the update information page if no message.
@@ -652,6 +665,12 @@ if (!empty($update_free_access) || $user->uid == 1) {
 
   update_fix_d6_requirements();
   update_fix_compatibility();
+
+  // Check the update requirements for all modules. If there are warnings, but
+  // no errors, skip reporting them if the user has provided a URL parameter
+  // acknowledging the warnings and indicating a desire to continue anyway.
+  $skip_warnings = !empty($_GET['continue']);
+  update_check_requirements($skip_warnings);
 
   $op = isset($_REQUEST['op']) ? $_REQUEST['op'] : '';
   switch ($op) {

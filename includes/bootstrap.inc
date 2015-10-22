@@ -1623,14 +1623,14 @@ function _drupal_bootstrap($phase) {
       // The user agent header is used to pass a database prefix in the request when
       // running tests. However, for security reasons, it is imperative that we
       // validate we ourselves made the request.
-      $GLOBALS['simpletest_installed'] = TRUE;
-      if (isset($_SERVER['HTTP_USER_AGENT']) && preg_match("/^(simpletest\d+);/", $_SERVER['HTTP_USER_AGENT'], $matches)) {
-        if (!drupal_valid_test_ua($_SERVER['HTTP_USER_AGENT'])) {
-          header($_SERVER['SERVER_PROTOCOL'] . ' 403 Forbidden');
-          exit;
-        }
+      if ($test_prefix = drupal_valid_test_ua()) {
+        // Set the test run id for use in other parts of Drupal.
+        $test_info = &$GLOBALS['drupal_test_info'];
+        $test_info['test_run_id'] = $test_prefix;
+        $test_info['in_child_site'] = TRUE;
+
         $db_prefix_string = is_array($db_prefix) ? $db_prefix['default'] : $db_prefix;
-        $db_prefix = $db_prefix_string . $matches[1];
+        $db_prefix = $db_prefix_string . $test_prefix;
       }
 
       // Initialize the default database.
@@ -1643,6 +1643,10 @@ function _drupal_bootstrap($phase) {
       break;
 
     case DRUPAL_BOOTSTRAP_ACCESS:
+      // In D7 this phase is called DRUPAL_BOOTSTRAP_VARIABLES.
+      // Initialize configuration variables, using values from settings.php if available.
+      $conf = variable_init(isset($conf) ? $conf : array());
+
       // Deny access to hosts which were banned - t() is not yet available.
       if (drupal_is_denied('host', ip_address())) {
         header($_SERVER['SERVER_PROTOCOL'] .' 403 Forbidden');
@@ -1660,9 +1664,6 @@ function _drupal_bootstrap($phase) {
       break;
 
     case DRUPAL_BOOTSTRAP_LATE_PAGE_CACHE:
-      // Initialize configuration variables, using values from settings.php if available.
-      $conf = variable_init(isset($conf) ? $conf : array());
-
       // Sanitize the destination parameter (which is often used for redirects)
       // to prevent open redirect attacks leading to other domains. Sanitize
       // both $_GET['destination'] and $_REQUEST['destination'] to protect code
@@ -1752,15 +1753,35 @@ function _drupal_bootstrap($phase) {
  * Returns the time zone of the current user. Backport from D7
  */
 function drupal_get_user_timezone() {
+  $timezone = NULL;
   global $user;
   if (variable_get('configurable_timezones', 1) && $user->uid && $user->timezone) {
-    return $user->timezone;
+    $timezone = $user->timezone;
   }
   else {
     // Ignore PHP strict notice if time zone has not yet been set in the php.ini
     // configuration.
-    return variable_get('date_default_timezone', @date_default_timezone_get());
+    $timezone = variable_get('date_default_timezone', @date_default_timezone_get());
   }
+  // Backward compatibility with D6's numeric timezone offsets.
+  if (is_numeric($timezone)) {
+    $timezone_name = timezone_name_from_abbr('', $timezone);
+    if (empty($timezone_name)) {
+      // In some cases timezone_name_from_abbr() return false instead of name.
+      // Trying to figure out timezone from the timezones list manually.
+      $abbrarray = timezone_abbreviations_list();
+      foreach ($abbrarray as $abbr) {
+        foreach ($abbr as $city) {
+          if ($city['offset'] == $timezone) {
+            $timezone_name = $city['timezone_id'];
+            break(2);
+          }
+        }
+      }
+    }
+    $timezone = $timezone_name;
+  }
+  return $timezone;
 }
 
 /**

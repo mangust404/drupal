@@ -1097,10 +1097,10 @@ function theme_get_setting($setting_name, $refresh = FALSE) {
 
     if ($settings['toggle_logo']) {
       if ($settings['default_logo']) {
-        $settings['logo'] = base_path() . dirname($theme_object->filename) .'/logo.png';
+        $settings['logo'] = file_create_url(dirname($theme_object->filename) .'/logo.png');
       }
       elseif ($settings['logo_path']) {
-        $settings['logo'] = base_path() . $settings['logo_path'];
+        $settings['logo'] = file_create_url($settings['logo_path']);
       }
     }
 
@@ -1301,7 +1301,7 @@ function theme_status_messages($display = NULL) {
       $output .= " </ul>\n";
     }
     else {
-      $output .= $messages[0];
+      $output .= current($messages);
     }
     $output .= "</div>\n";
   }
@@ -2033,12 +2033,12 @@ function template_preprocess_page(&$variables) {
 
   // Construct page title
   if (drupal_get_title()) {
-    $head_title = array(strip_tags(drupal_get_title()), variable_get('site_name', 'Drupal'));
+    $head_title = array(drupal_get_title(), check_plain(variable_get('site_name', 'Drupal')));
   }
   else {
-    $head_title = array(variable_get('site_name', 'Drupal'));
+    $head_title = array(check_plain(variable_get('site_name', 'Drupal')));
     if (variable_get('site_slogan', '')) {
-      $head_title[] = variable_get('site_slogan', '');
+      $head_title[] = filter_xss_admin(variable_get('site_slogan', ''));
     }
   }
   $variables['head_title']        = implode(' | ', $head_title);
@@ -2057,7 +2057,7 @@ function template_preprocess_page(&$variables) {
   $variables['primary_links']     = theme_get_setting('toggle_primary_links') ? menu_primary_links() : array();
   $variables['secondary_links']   = theme_get_setting('toggle_secondary_links') ? menu_secondary_links() : array();
   $variables['search_box']        = (theme_get_setting('toggle_search') ? drupal_get_form('search_theme_form') : '');
-  $variables['site_name']         = (theme_get_setting('toggle_name') ? filter_xss_admin(variable_get('site_name', 'Drupal')) : '');
+  $variables['site_name']         = (theme_get_setting('toggle_name') ? check_plain(variable_get('site_name', 'Drupal')) : '');
   $variables['site_slogan']       = (theme_get_setting('toggle_slogan') ? filter_xss_admin(variable_get('site_slogan', '')) : '');
   $variables['css']               = drupal_add_css();
   $variables['styles']            = drupal_get_css();
