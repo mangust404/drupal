@@ -46,6 +46,10 @@ if (!module_exists('simpletest')) {
 if ($args['clean']) {
   // Clean up left-over times and directories.
   simpletest_clean_environment();
+  // Clean and rebuild up tests list cache.
+  cache_clear_all('simpletest', 'cache');
+  simpletest_test_get_all();
+
   echo "\nEnvironment cleaned.\n";
 
   // Get the status messages and print them.
@@ -128,6 +132,7 @@ All arguments are long options.
 
   --clean     Cleans up database tables or directories from previous, failed,
               tests and then exits (no tests are run).
+              Also resets tests list (useful while creating new tests).
 
   --url       Immediately preceeds a URL to set the host and path. You will
               need this parameter if Drupal is in a subdirectory on your
