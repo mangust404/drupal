@@ -402,6 +402,8 @@ function drupal_uninstall_modules($module_list = array(), $uninstall_dependents 
   }
 
   foreach ($module_list as $module) {
+    // At first load the module because it may use some functions from .module file
+    module_load_include('module', $module);
     // Uninstall the module.
     module_load_install($module);
     module_invoke($module, 'uninstall');
