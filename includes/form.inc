@@ -207,9 +207,9 @@ function drupal_get_form($form_id) {
  *   The newly built form.
  */
 function drupal_rebuild_form($form_id, &$form_state, $args, $old_form = NULL) {
-  // Remove the first argument. This is $form_id.when called from
-  // drupal_get_form and the original $form_state when called from some AHAH
-  // callback. Neither is needed. After that, put in the current state.
+  //$args contains only clean array of passed arguments to the form.
+  // Add current $form_state to the arguments.
+  array_unshift($args, '');
   $args[0] = &$form_state;
   // And the form_id.
   array_unshift($args, $form_id);

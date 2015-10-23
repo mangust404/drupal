@@ -1578,6 +1578,36 @@ class FormsRebuildTestCase extends DrupalWebTestCase {
   }
 
   /**
+   * Tests preservation of form arguments on form rebuild.
+   */
+  function testRebuildArguments() {
+    $arg1 = $this->randomName();
+    $arg2 = strrev($arg1);
+    $this->drupalPost('form-test/form-rebuild-arguments/' . $arg1, array(), 'Submit');
+    $this->assertText('arg1=' . $arg1, 'Argument 1 passed correctly');
+    $this->assertText('arg2=' . $arg2, 'Argument 2 passed correctly');
+  }
+
+  /**
+   * Tests preservation of form elements on form rebuild and confirm.
+   */
+  function testRebuildValuesOnConfirm() {
+    $edit = array(
+      'checkbox_on' => TRUE,
+      'checkbox_off' => FALSE,
+      'select' => 'option1',
+      'name' => $this->randomName(),
+      'description' => $this->randomName(255),
+    );
+    $this->drupalPost('form-test/form-rebuild-values-on-confirm', $edit, 'Submit');
+    $this->drupalPost(NULL, array(), 'Confirm');
+
+    foreach($edit as $name => $value) {
+      $this->assertText("$name=$value", "Submitted value for $name is correct");
+    }
+  }
+
+  /**
    * Tests that a form's action is retained after an Ajax submission.
    *
    * The 'action' attribute of a form should not change after an Ajax submission

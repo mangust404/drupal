@@ -173,6 +173,21 @@ function form_test_menu() {
     'type' => MENU_CALLBACK,
   );
 
+  $items['form-test/form-rebuild-arguments'] = array(
+    'title' => 'Pass form arguments on form rebuild',
+    'page callback' => 'form_rebuild_arguments_page',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['form-test/form-rebuild-values-on-confirm'] = array(
+    'title' => 'Pass dynamic form values on form rebuild',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('form_rebuild_values_on_confirm'),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
   $items['form-test/redirect'] = array(
     'title' => 'Redirect test',
     'page callback' => 'drupal_get_form',
@@ -1600,6 +1615,116 @@ function form_test_form_rebuild_preserve_values_form_add_more($form, &$form_stat
 function form_test_form_rebuild_preserve_values_form_submit($form, &$form_state) {
   // Finish the workflow. Do not rebuild.
   drupal_set_message(t('Form values: %values', array('%values' => var_export($form_state['values'], TRUE))));
+}
+
+/**
+ * Page handler for form_test_form_rebuild_arguments_form() form.
+ */
+function form_rebuild_arguments_page($arg1) {
+  $arg2 = strrev($arg1);
+  return drupal_get_form('form_test_form_rebuild_arguments_form', $arg1, $arg2);
+}
+
+function form_test_form_rebuild_arguments_form($form_state, $arg1, $arg2) {
+  $form = array();
+  $form['#arg1'] = $arg1;
+  $form['#arg2'] = $arg2;
+
+  if(!empty($form_state['rebuilded'])) {
+    $form['result'] = array(
+      '#type' => 'markup',
+      '#value' => 'arg1=' . $arg1 . ', arg2=' . $arg2,
+    );
+  }
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Submit',
+  );
+  return $form;
+}
+
+/**
+ * Submit handler.
+ *
+ * @see form_test_form_rebuild_arguments_form()
+ */
+function form_test_form_rebuild_arguments_form_submit($form, &$form_state) {
+  $form_state['rebuild'] = TRUE;
+  $form_state['rebuilded'] = TRUE;
+}
+
+/**
+ * Form constructor for testing form state persistence.
+ */
+function form_rebuild_values_on_confirm($form_state) {
+  $form = array();
+  if (!empty($form_state['confirm'])) {
+    return array_merge($form, form_rebuild_values_confirm($form_state));
+  }
+  $form['checkbox_on'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Checked checkbox',
+  );
+  $form['checkbox_off'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Not checked checkbox',
+  );
+  $form['select'] = array(
+    '#type' => 'select',
+    '#title' => 'Value 2',
+    '#options' => array(
+      '' => '- Please select -',
+      'option1' => 'Option 1',
+      'option2' => 'Option 2',
+    ),
+  );
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Name',
+  );
+  $form['description'] = array(
+    '#type' => 'textarea',
+    '#title' => 'Description',
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Submit',
+  );
+  return $form;
+}
+
+/**
+ * Submit handler.
+ *
+ * @see form_test_form_rebuild_arguments_form()
+ */
+function form_rebuild_values_on_confirm_submit($form, &$form_state) {
+  if ($form_state['clicked_button']['#value'] == 'Submit') {
+    $form_state['rebuild'] = TRUE;
+    $form_state['confirm'] = 1;
+  } else {
+    print "Submitted values: \n";
+    foreach($form_state['values'] as $key => $value) {
+      print "$key=$value\n";
+    }
+    exit;
+  }
+}
+
+/**
+ * Confirmation form for testing.
+ *
+ * @see form_test_form_rebuild_arguments_form()
+ */
+function form_rebuild_values_confirm($form_state) {
+  $form = array();
+  foreach (element_children($form_state['values']) as $key) {
+    $form[$key] = array(
+      '#type' => 'value',
+      '#value' => $form_state['values'][$key],
+    );
+  }
+  return confirm_form($form, 'Really?', drupal_get_destination(), 'please confirm', t('Confirm'));
 }
 
 /**
