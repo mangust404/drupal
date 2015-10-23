@@ -1270,7 +1270,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     // environment. (Drupal 6)
     $this->pass(t('Starting run with db_prefix %prefix', array('%prefix' => $db_prefix_new)), 'System');
 
-    // Postgres sometimes show "Query failed: ERROR: tuple concurrently updated"
+    // Sometimes "Query failed: ERROR: tuple concurrently updated" appears
     // when --concurrency is enabled.
     lock_acquire('drupal_install_system');
 
@@ -1500,6 +1500,12 @@ class DrupalWebTestCase extends DrupalTestCase {
       // Return the database prefix to the original.
       $db_prefix = $this->originalPrefix;
 
+      // Without locking when several concurrent test processes trying to
+      // reset system to initial state they may set several cache entries
+      // on the same time and database warning will appear. To prevent that
+      // we should wait until other process will complete uninstall process.
+      lock_acquire('drupal_uninstall_system');
+
       // Return the user to the original one.
       $user = $this->originalUser;
 //      drupal_save_session(TRUE);
@@ -1541,6 +1547,9 @@ class DrupalWebTestCase extends DrupalTestCase {
 
       // Close the CURL handler.
       $this->curlClose();
+
+      // Tell other processes that we're done.
+      lock_release('drupal_uninstall_system');
     }
   }
 
