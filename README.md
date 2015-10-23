@@ -45,7 +45,6 @@
   - Taxonomy
 
 Module tests on the way:
- - Throttle
  - Tracker
  - Translation
  - Trigger
@@ -56,3 +55,4 @@ Module tests on the way:
 Modules without tests:
  - OpenID (not significant)
  - Ping (not present in D7)
+ - Throttle
