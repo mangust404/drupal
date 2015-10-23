@@ -2863,8 +2863,15 @@ class DrupalWebTestCase extends DrupalTestCase {
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoTitle($title, $message, $group = 'Other') {
-    return $this->assertNotEqual(current($this->xpath('//title')), $title, $message, $group);
+  protected function assertNoTitle($title, $message = '', $group = 'Other') {
+    $actual = (string) current($this->xpath('//title'));
+    if (!$message) {
+      $message = t('Page title @actual is not equal to @unexpected.', array(
+        '@actual' => var_export($actual, TRUE),
+        '@unexpected' => var_export($title, TRUE),
+      ));
+    }
+    return $this->assertNotEqual($actual, $title, $message, $group);
   }
 
   /**

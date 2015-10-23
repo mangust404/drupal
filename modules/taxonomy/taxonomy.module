@@ -846,7 +846,8 @@ function taxonomy_get_children($tid, $vid = 0, $key = 'tid') {
  *   Results are statically cached.
  */
 function taxonomy_get_tree($vid, $parent = 0, $depth = -1, $max_depth = NULL) {
-  static $children, $parents, $terms;
+  $static = &drupal_static(__FUNCTION__, array(NULL, NULL, NULL));
+  list($children, $parents, $terms) = $static;
 
   // We cache trees, so it's not CPU-intensive to call get_tree() on a term
   // and its children, too.
@@ -885,9 +886,9 @@ function taxonomy_get_tree($vid, $parent = 0, $depth = -1, $max_depth = NULL) {
           break;
         }
         $term = $terms[$vid][$child];
-        if (count($parents[$vid][$term->tid]) > 1) {
-          // We have a term with multi parents here. Clone the term,
-          // so that the depth attribute remains correct.
+        if (isset($parents[$vid][$term->tid])) {
+          // Clone the term so that the depth attribute remains correct
+          // in the event of multiple parents.
           $term = clone $term;
         }
         $term->depth = $depth;
@@ -1042,7 +1043,7 @@ function taxonomy_get_term_by_name($name) {
  *   Results are statically cached.
  */
 function taxonomy_vocabulary_load($vid, $reset = FALSE) {
-  $vocabularies = drupal_static('taxonomy_vocabulary_load', array());
+  $vocabularies = drupal_static(__FUNCTION__, array());
 
   if ($reset) {
     $vocabularies = array();
@@ -1081,7 +1082,7 @@ function taxonomy_vocabulary_load($vid, $reset = FALSE) {
  *   A term object. Results are statically cached.
  */
 function taxonomy_get_term($tid, $reset = FALSE) {
-  static $terms = array();
+  $terms = &drupal_static(__FUNCTION__, array());
 
   if ($reset) {
     $terms = array();

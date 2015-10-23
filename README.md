@@ -41,10 +41,10 @@
   - Search
   - Statistics
   - Syslog
+  - System
+  - Taxonomy
 
 Module tests on the way:
- - System
- - Taxonomy
  - Throttle
  - Tracker
  - Translation

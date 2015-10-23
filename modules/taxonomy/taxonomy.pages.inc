@@ -112,6 +112,13 @@ function theme_taxonomy_term_page($tids, $result) {
  * Helper function for autocompletion
  */
 function taxonomy_autocomplete($vid, $string = '') {
+  // If the request has a '/' in the search text, then the menu system will have
+  // split it into multiple arguments, recover the intended $tags_typed.
+  $args = func_get_args();
+  // Shift off the $field_name argument.
+  array_shift($args);
+  $string = implode('/', $args);
+
   // The user enters a comma-separated list of tags. We only autocomplete the last tag.
   $array = drupal_explode_tags($string);
 
