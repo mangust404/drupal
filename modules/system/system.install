@@ -344,14 +344,16 @@ function system_install() {
     }
 
     // Create functions.
-    db_query('CREATE OR REPLACE FUNCTION "greatest"(numeric, numeric) RETURNS numeric AS
+
+    // Unused function
+    /*db_query('CREATE OR REPLACE FUNCTION "greatest"(numeric, numeric) RETURNS numeric AS
       \'SELECT CASE WHEN (($1 > $2) OR ($2 IS NULL)) THEN $1 ELSE $2 END;\'
       LANGUAGE \'sql\''
     );
     db_query('CREATE OR REPLACE FUNCTION "greatest"(numeric, numeric, numeric) RETURNS numeric AS
       \'SELECT greatest($1, greatest($2, $3));\'
       LANGUAGE \'sql\''
-    );
+    );*/
     if (!db_result(db_query("SELECT COUNT(*) FROM pg_proc WHERE proname = 'rand'"))) {
       db_query('CREATE OR REPLACE FUNCTION "rand"() RETURNS float AS
         \'SELECT random();\'
@@ -365,14 +367,16 @@ function system_install() {
         LANGUAGE \'sql\''
       );
     }
-    db_query('CREATE OR REPLACE FUNCTION "if"(boolean, text, text) RETURNS text AS
-      \'SELECT CASE WHEN $1 THEN $2 ELSE $3 END;\'
-      LANGUAGE \'sql\''
-    );
-    db_query('CREATE OR REPLACE FUNCTION "if"(boolean, integer, integer) RETURNS integer AS
-      \'SELECT CASE WHEN $1 THEN $2 ELSE $3 END;\'
-      LANGUAGE \'sql\''
-    );
+    if (!db_result(db_query("SELECT COUNT(*) FROM pg_proc WHERE proname = 'if'"))) {
+      db_query('CREATE OR REPLACE FUNCTION "if"(boolean, text, text) RETURNS text AS
+        \'SELECT CASE WHEN $1 THEN $2 ELSE $3 END;\'
+        LANGUAGE \'sql\''
+      );
+      db_query('CREATE OR REPLACE FUNCTION "if"(boolean, integer, integer) RETURNS integer AS
+        \'SELECT CASE WHEN $1 THEN $2 ELSE $3 END;\'
+        LANGUAGE \'sql\''
+      );
+    }
   }
 
   // Create tables.
