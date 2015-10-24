@@ -128,7 +128,7 @@ function trigger_assign_form($form_state, $hook, $op, $description) {
   // Restrict the options list to actions that declare support for this hook-op
   // combination.
   foreach (actions_list() as $func => $metadata) {
-    if (isset($metadata['hooks']['any']) || (isset($metadata['hooks'][$hook]) && is_array($metadata['hooks'][$hook]) && (in_array($op, $metadata['hooks'][$hook])))) {
+    if (isset($metadata['hooks']['any']) || (isset($metadata['hooks'][$hook]) && is_array($metadata['hooks'][$hook]) && (in_array($op, $metadata['hooks'][$hook]) || count($metadata['hooks'][$hook]) == 0))) {
       $functions[] = $func;
     }
   }

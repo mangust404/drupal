@@ -2440,13 +2440,13 @@ function user_action_info() {
       'description' => t('Block current user'),
       'type' => 'user',
       'configurable' => FALSE,
-      'hooks' => array(),
+      'hooks' => array('any' => array()),
     ),
     'user_block_ip_action' => array(
       'description' => t('Ban IP address of current user'),
       'type' => 'user',
       'configurable' => FALSE,
-      'hooks' => array(),
+      'hooks' => array('any' => array()),
     ),
   );
 }
@@ -2466,9 +2466,10 @@ function user_block_user_action(&$object, $context = array()) {
     global $user;
     $uid = $user->uid;
   }
-  db_query("UPDATE {users} SET status = 0 WHERE uid = %d", $uid);
-  drupal_session_destroy_uid($uid);
-  watchdog('action', 'Blocked user %name.', array('%name' => check_plain($user->name)));
+  $account = user_load($uid);
+  $account = user_save($account, array('status' => 0));
+  drupal_session_destroy_uid($account->uid);
+  watchdog('action', 'Blocked user %name.', array('%name' => check_plain($account->name)));
 }
 
 /**

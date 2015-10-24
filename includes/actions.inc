@@ -129,7 +129,13 @@ function actions_do($action_ids, &$object, $context = NULL, $a1 = NULL, $a2 = NU
     }
     // Singleton action; $action_ids is the function name.
     else {
-      $result[$action_ids] = $action_ids($object, $context, $a1, $a2);
+      if (function_exists($action_ids)) {
+        $result[$action_ids] = $action_ids($object, $context, $a1, $a2);
+      }
+      else {
+        // Set to avoid undefined index error messages later.
+        $actions_result[$action_ids] = FALSE;
+      }
     }
   }
   $stack--;
