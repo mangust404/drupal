@@ -2033,7 +2033,7 @@ function template_preprocess_page(&$variables) {
 
   // Construct page title
   if (drupal_get_title()) {
-    $head_title = array(drupal_get_title(), check_plain(variable_get('site_name', 'Drupal')));
+    $head_title = array(strip_tags(drupal_get_title()), check_plain(variable_get('site_name', 'Drupal')));
   }
   else {
     $head_title = array(check_plain(variable_get('site_name', 'Drupal')));

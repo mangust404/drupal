@@ -101,6 +101,24 @@ function translation_form_alter(&$form, $form_state, $form_id) {
   }
   elseif (isset($form['#id']) && $form['#id'] == 'node-form' && translation_supported_type($form['#node']->type)) {
     $node = $form['#node'];
+    $languages = language_list('enabled');
+    $disabled_languages = isset($languages[0]) ? $languages[0] : FALSE;
+    $translator_widget = $disabled_languages && user_access('translate content');
+    $groups = array(t('Disabled'), t('Enabled'));
+    // Allow translators to enter content in disabled languages. Translators
+    // might need to distinguish between enabled and disabled languages, hence
+    // we divide them in two option groups.
+    if ($translator_widget) {
+      $options = array($groups[1] => array(LANGUAGE_NONE => t('Language neutral')));
+      $language_list = locale_language_list('name', TRUE);
+      foreach (array(1, 0) as $status) {
+        $group = $groups[$status];
+        foreach ($languages[$status] as $langcode => $language) {
+          $options[$group][$langcode] = $language_list[$langcode];
+        }
+      }
+      $form['language']['#options'] = $options;
+    }
     if (!empty($node->translation_source)) {
       // We are creating a translation. Add values and lock language field.
       $form['translation_source'] = array('#type' => 'value', '#value' => $node->translation_source);
@@ -162,7 +180,7 @@ function translation_link($type, $node = NULL, $teaser = FALSE) {
     unset($translations[$node->language]);
     $languages = language_list();
     foreach ($languages as $langcode => $language) {
-      if (isset($translations[$langcode]) && $translations[$langcode]->status) {
+      if (isset($translations[$langcode]) && $translations[$langcode]->status && $language->enabled) {
         $links["node_translation_$langcode"] = array(
           'title' => $language->native,
           'href' => 'node/'. $translations[$langcode]->nid,
@@ -201,6 +219,14 @@ function translation_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
           // If not supported language, or same language as source node, break.
           return;
         }
+        // Ensure we don't have an existing translation in this language.
+        if (!empty($translation_source->tnid)) {
+          $translations = translation_node_get_translations($translation_source->tnid);
+          if (isset($translations[$_GET['language']])) {
+            drupal_set_message(t('A translation of %title in %language already exists, a new %type will be created instead of a translation.', array('%title' => $translation_source->title, '%language' => $language_list[$_GET['language']]->name, '%type' => $node->type)), 'error');
+            return;
+          }
+        }
         // Populate fields based on source node.
         $node->language = $_GET['language'];
         $node->translation_source = $translation_source;
@@ -208,7 +234,7 @@ function translation_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         // If user has no access to the filter used for the body, Drupal core
         // does not let the edit form to appear, so we should avoid exposing
         // the source text here too.
-        $node->body = filter_access($translation_source->format) ? $translation_source->body : '';
+        $node->body = filter_access($translation_source->format) ? str_replace('<!--break-->', '', $translation_source->body) : '';
         // Let every module add custom translated fields.
         node_invoke_nodeapi($node, 'prepare translation');
       }
@@ -335,19 +361,37 @@ function translation_path_get_translations($path) {
  * Replaces links with pointers to translated versions of the content.
  */
 function translation_translation_link_alter(&$links, $path) {
-  if ($paths = translation_path_get_translations($path)) {
-    // Path can only start with "node/$nid" or "node/$nid/" here.
-    $path = explode('/', $path);
-    $node = node_load($path[1]);
-    $translations = translation_node_get_translations($node->tnid);  
+  if (preg_match("!^node/(\d+)(/.+|)!", $path, $matches)) {
+    $node = node_load((int) $matches[1]);
+
+    if (empty($node->tnid)) {
+      // If the node cannot be found nothing needs to be done. If it does not
+      // have translations it might be a language neutral node, in which case we
+      // must leave the language switch links unaltered. This is true also for
+      // nodes not having translation support enabled.
+      if (empty($node) || empty($node->language) || !translation_supported_type($node->type)) {
+        return;
+      }
+      $langcode = $node->language;
+      $translations = array($langcode => $node);
+    }
+    else {
+      $translations = translation_node_get_translations($node->tnid);
+    }
+
     foreach ($links as $langcode => $link) {
-      if (isset($paths[$langcode]) && $translations[$langcode]->status) {
+      if (isset($translations[$langcode]) && $translations[$langcode]->status) {
         // Translation in a different node.
-        $links[$langcode]['href'] = $paths[$langcode];
+        $links[$langcode]['href'] = 'node/' . $translations[$langcode]->nid . $matches[2];
       }
       else {
         // No translation in this language, or no permission to view.
-        unset($links[$langcode]);
+        unset($links[$langcode]['href']);
+        if(isset($links[$langcode]['attributes']['class'])) {
+          $links[$langcode]['attributes']['class'] .= ' locale-untranslated';
+        } else {
+          $links[$langcode]['attributes']['class'] = 'locale-untranslated';
+        }
       }
     }
   }

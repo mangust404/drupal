@@ -34,7 +34,7 @@ function translation_node_overview($node) {
       $translation_node = node_load($translations[$language->language]->nid);
       $title = l($translation_node->title, 'node/'. $translation_node->nid);
       if (node_access('update', $translation_node)) {
-        $options[] = l(t('edit'), "node/$translation_node->nid/edit");
+        $options[] = l(t('edit'), "node/$translation_node->nid/edit", array('language' => $language));
       }
       $status = $translation_node->status ? t('Published') : t('Not published');
       $status .= $translation_node->translate ? ' - <span class="marker">'. t('outdated') .'</span>' : '';
@@ -46,7 +46,7 @@ function translation_node_overview($node) {
       // No such translation in the set yet: help user to create it.
       $title = t('n/a');
       if (node_access('create', $node)) {
-        $options[] = l(t('add translation'), 'node/add/'. str_replace('_', '-', $node->type), array('query' => "translation=$node->nid&language=$language->language"));
+        $options[] = l(t('add translation'), 'node/add/'. str_replace('_', '-', $node->type), array('query' => "translation=$node->nid&language=$language->language", 'language' => $language));
       }
       $status = t('Not translated');
     }
