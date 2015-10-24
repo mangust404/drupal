@@ -3272,6 +3272,20 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
+   * Outputs to verbose the most recent $count emails sent.
+   *
+   * @param $count
+   *   Optional number of emails to output.
+   */
+  protected function verboseEmail($count = 1) {
+    $mails = $this->drupalGetMails();
+    for ($i = sizeof($mails) -1; $i >= sizeof($mails) - $count && $i >= 0; $i--) {
+      $mail = $mails[$i];
+      $this->verbose(t('Email:') . '<pre>' . print_r($mail, TRUE) . '</pre>');
+    }
+  }
+  
+  /**
    * Log verbose message in a text file.
    *
    * The a link to the vebose message will be placed in the test results via
