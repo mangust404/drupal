@@ -260,7 +260,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
 function _drupal_get_last_caller($backtrace) {
   // Errors that occur inside PHP internal functions do not generate
   // information about file and line. Ignore black listed functions.
-  $blacklist = array('debug', '_drupal_error_handler', '_drupal_exception_handler');
+  $blacklist = array('debug', '_drupal_error_handler', '_drupal_exception_handler', 'db_query', '_db_query', 'pg_query', 'mysql_query', 'mysqli_query', 'db_query_range');
   while (($backtrace && !isset($backtrace[0]['line'])) ||
          (isset($backtrace[1]['function']) && in_array($backtrace[1]['function'], $blacklist))) {
     array_shift($backtrace);
