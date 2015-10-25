@@ -43,16 +43,16 @@
   - Syslog
   - System
   - Taxonomy
+  - Tracker
+  - Translation
+  - Trigger
+  - Update
+  - Upload (written from the scratch)
 
 Module tests on the way:
- - Tracker
- - Translation
- - Trigger
- - Update
- - Upload
  - User
 
-Modules without tests:
+Core modules without tests:
  - OpenID (not significant)
  - Ping (not present in D7)
  - Throttle

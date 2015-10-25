@@ -1,0 +1,388 @@
+<?php
+
+/**
+ * @file
+ * Tests for upload.module. This is not a D7 backport.
+ * TODO:
+ * Test is not complete. Pending tests are:
+ *  - 'view uploaded files' permission restrictions;
+ *  - node attachments link;
+ *  - uploading files with forbidden extensions;
+ *  - uploading extensions concat for several roles;
+ *  - private file download method for uploads;
+ *  - disable file uploads for specific node types;
+ *  - check that message is shown when files directory is not prpoperly configured;
+ *  - file uploads settings page;
+ *  - validate file size;
+ *  - check for user space used limit;
+ *  - check for image resolution;
+ *  - AHAH submit for incorrect or expired form;
+ *  - node revisions behavior;
+ *  - check for uploaded images in RSS feed;
+ *  - (continue list?)
+ */
+
+/**
+ * Defines a base class for testing the Upload module.
+ */
+class UploadModuleTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Upload test case',
+      'description' => 'Test node uploading files functionality.',
+      'group' => 'Node',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('node', 'upload');
+    $this->web_user = $this->drupalCreateUser(array('create page content', 'edit own page content', 'upload files', 'view uploaded files'));
+    $this->drupalLogin($this->web_user);
+  }
+
+  /**
+   * Test that basic upload function is working properly.
+   */
+  function testUploadAndDelete() {
+    // First step - create a node and attach a file.
+    $this->drupalGet('node/add/page');
+    
+    $image = current($this->drupalGetTestFiles('image'));
+    $edit = array(
+      'title' => $this->randomName(),
+      'body' => $this->randomName(),
+      'files[upload]' => $image->filename,
+    );
+
+    $this->drupalPost(NULL, $edit, t('Attach'));
+    $this->assertFieldByXPath('//div[@class="attachments"]//input', $image->basename, 'Image name field present.');
+    $this->drupalPost(NULL, array(), t('Save'));
+
+    $node = $this->drupalGetNodeByTitle($edit['title']);
+
+    $this->assertEqual(count($node->files), 1, 'File uploaded successfully.');
+
+    $uploaded_file = current($node->files);
+    $this->assertTrue(file_exists($uploaded_file->filepath), 'Uploaded file is saved correctly.');
+    $this->assertEqual($uploaded_file->description, $image->basename, 'Uploaded file is named correctly.');
+    $this->assertEqual($uploaded_file->status, FILE_STATUS_PERMANENT, 'Uploaded file status is permanent.');
+    $db_file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $uploaded_file->fid));
+    $this->assertEqual($db_file->fid, $uploaded_file->fid, 'File exists in files table.');
+    // Second step - remove uploaded file.
+    $this->drupalGet('node/' . $node->nid . '/edit');
+    $this->assertFieldByXPath('//div[@class="attachments"]//input', $image->basename, 'Image name field present.');
+
+    $edit = array(
+      'files[' . $uploaded_file->fid . '][remove]' => TRUE,
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    drupal_static_reset('node_load');
+    $node = node_load($node->nid);
+    $this->assertEqual(count($node->files), 0, 'Uploaded file was removed');
+    $updated_file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $uploaded_file->fid));
+    $this->assertFalse($updated_file, 'Uploaded file no longer exists in database.');
+    $this->assertFalse(file_exists($uploaded_file->filepath), 'File was removed from disk.');
+  }
+
+  /**
+   * Test that deleting file during basic upload is working properly.
+   */
+  function testDeleteOnAttach() {
+    // First step - create a node and attach a file.
+    $this->drupalGet('node/add/page');
+    
+    $image = current($this->drupalGetTestFiles('image'));
+    $title = $this->randomName();
+    $edit = array(
+      'title' => $title,
+      'body' => $this->randomName(),
+      'files[upload]' => $image->filename,
+    );
+
+    $this->drupalPost(NULL, $edit, t('Attach'));
+    $this->assertFieldByXPath('//div[@class="attachments"]//input', $image->basename, 'Image name field present.');
+
+    $fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+    $file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $fid));
+    $this->assertTrue(file_exists($file->filepath), 'File exists on the disk.');
+    $this->assertEqual($file->status, FILE_STATUS_TEMPORARY, 'File is temporary.');
+
+    // Set "Delete" checkbox to true
+    $edit = array(
+      'files[' . $fid . '][remove]' => TRUE,
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    $node = $this->drupalGetNodeByTitle($title);
+    $this->assertEqual(count($node->files), 0, 'Node does not have any files.');
+
+    $db_file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $fid));
+    $this->assertFalse($db_file, 'Uploaded file no longer exists in database.');
+    $this->assertFalse(file_exists($file->filepath), 'File was removed from disk.');
+  }
+
+  /**
+   * Test uploaded file list functions are working properly.
+   */
+  function testUploadList() {
+    // Create a node with two files. One will be listed and another is not.
+    $this->drupalGet('node/add/page');
+    
+    $images = $this->drupalGetTestFiles('image');
+    $image1 = reset($images);
+    end($images);
+    $image2 = current($images);
+    $title = $this->randomName();
+    $edit = array(
+      'title' => $title,
+      'body' => $this->randomName(),
+      'files[upload]' => $image1->filename,
+    );
+    $this->drupalPost(NULL, $edit, t('Attach'));
+
+    $edit2 = array(
+      'files[upload]' => $image2->filename,
+    );
+    $this->drupalPost(NULL, $edit, t('Attach'));
+
+    // Get fid of the second attached file.
+    $fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+
+    $filename = $this->randomName();
+    // Remove 'list' checkbox and set file name.
+    $edit = array(
+      'files[' . $fid . '][list]' => FALSE,
+      'files[' . $fid . '][description]' => $filename,
+    );
+
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    $node = $this->drupalGetNodeByTitle($title);
+    $this->assertEqual(count($node->files), 2, 'Files were uploaded successfully.');
+    $first = reset($node->files);
+    $second = next($node->files);
+    $this->assertEqual($first->list, TRUE, 'First file is marked as listed.');
+    $this->assertEqual($second->list, FALSE, 'Second file is not marked as listed.');
+    $this->assertEqual($second->description, $filename, 'File name to the second file is set.');
+
+    // Check file list links.
+    $this->drupalGet('node/' . $node->nid);
+    $this->assertText('Attachment');
+    $this->assertLinkByHref(file_create_url($first->filepath), 0, 'Link to the first file is found.');
+    $this->assertNoLinkByHref(file_create_url($second->filepath), 0, 'No links to the second file.');
+
+    // Edit node and switch files listing.
+    $this->drupalGet('node/' . $node->nid . '/edit');
+
+    $edit = array(
+      'files[' . $first->fid . '][list]' => FALSE,
+      'files[' . $second->fid . '][list]' => TRUE,
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    $this->drupalGet('node/' . $node->nid);
+    $this->assertText('Attachment');
+    $this->assertNoLinkByHref(file_create_url($first->filepath), 0, 'No links to the first file.');
+    $this->assertLink($filename, 0, 'File name is equal to link name.');
+    $this->assertLinkByHref(file_create_url($second->filepath), 0, 'Link to the second file is found.');
+
+  }
+
+  /**
+   * Test file weight functionality.
+   */
+  function testUploadFileWeight() {
+    // Create a node with two files.
+    $this->drupalGet('node/add/page');
+    
+    $images = $this->drupalGetTestFiles('image');
+    $image1 = reset($images);
+    end($images);
+    $image2 = current($images);
+    $title = $this->randomName();
+    $edit = array(
+      'title' => $title,
+      'body' => $this->randomName(),
+      'files[upload]' => $image1->filename,
+    );
+    $this->drupalPost(NULL, $edit, t('Attach'));
+
+    $first_filename = $this->randomName();
+    $first_fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+    $edit = array(
+      'files[' . $first_fid . '][description]' => $first_filename,
+      'files[' . $first_fid . '][weight]' => 0,
+      'files[upload]' => $image2->filename,
+    );
+    $this->drupalPost(NULL, $edit, t('Attach'));
+
+    // Get fid of the second attached file.
+    $second_fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+
+    $second_filename = $this->randomName();
+    // Remove 'list' checkbox and set file name.
+    $edit = array(
+      'files[' . $second_fid . '][list]' => TRUE,
+      'files[' . $second_fid . '][description]' => $second_filename,
+      'files[' . $second_fid . '][weight]' => 1,
+    );
+
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    $node = $this->drupalGetNodeByTitle($title);
+    $this->assertEqual(count($node->files), 2, 'Files were uploaded successfully.');
+    $first = reset($node->files);
+    $second = next($node->files);
+    $this->assertEqual($first->weight, 0, 'First file weight is correct.');
+    $this->assertEqual($second->weight, 1, 'Second file weight is correct.');
+
+    // Check file list links.
+    $this->drupalGet('node/' . $node->nid);
+    $this->assertText('Attachment');
+    $links = $this->xpath('//table[@id="attachments"]//a');
+    $this->assertEqual(count($links), 2, 'Two attachments was found.');
+    $this->assertEqual($links[0], $first_filename, 'First file is correct');
+    $this->assertEqual($links[1], $second_filename, 'Second file is correct');
+    
+    // Now edit node and reorder files. Move second file to the top.
+    $edit = array(
+      'files[' . $first_fid . '][weight]' => 1,
+      'files[' . $second_fid . '][weight]' => 0,
+    );
+    $this->drupalPost('node/' . $node->nid . '/edit', $edit, t('Save'));
+
+    drupal_static_reset('node_load');
+    $node = $this->drupalGetNodeByTitle($title);
+    $this->assertEqual($node->files[$first_fid]->weight, 1, 'First file weight is correct.');
+    $this->assertEqual($node->files[$second_fid]->weight, 0, 'Second file weight is correct.');
+
+    // Check file list links.
+    $this->drupalGet('node/' . $node->nid);
+    $this->assertText('Attachment');
+    $links = $this->xpath('//table[@id="attachments"]//a');
+    $this->assertEqual(count($links), 2, 'Two attachments was found.');
+    $this->assertEqual($links[0], $second_filename, 'Second file is now at the top.');
+    $this->assertEqual($links[1], $first_filename, 'First file at the bottom.');
+  }
+
+  function startAHAHRequests() {
+    // Store original form for sending several ahah requests.
+    $this->originalForm = $this->content;
+    $this->originalForm = preg_replace('/<fieldset.*<\/fieldset>/ms', '__ATTACHMENTS_PLACEHOLDER__', $this->originalForm);
+    $this->assertTrue(strpos($this->originalForm, '__ATTACHMENTS_PLACEHOLDER__') !== FALSE, 'Placeholder for AHAH wrapper content is set correctly.');
+  }
+
+  function prepareNextAHAHRequest() {
+    // Replace attachments AHAH placeholder with downloaded content.
+    $this->drupalSetContent(str_replace('__ATTACHMENTS_PLACEHOLDER__', $this->content, $this->originalForm));
+    $this->verbose('Complete form is: ' . $this->content);
+  }
+  /**
+   * Test javascript file upload.
+   */
+  function testUploadAHAH() {
+    $images = $this->drupalGetTestFiles('image');
+    $image1 = $images[0];
+    $image2 = $images[2];
+    $image3 = $images[3];
+
+    $this->drupalGet('node/add/page');
+
+    // At first, make ahah request and forget about form to test that unsaved temporary
+    // files will be removed.
+    $edit = array(
+      "title" => $this->randomName(),
+      'files[upload]' => $image1->filename,
+    );
+    // Press 'Attach' button through AHAH, and place the expected HTML result
+    // as the tested content.
+    $this->drupalPost(NULL, $edit, array('op' => t('Attach'), 'path' => 'upload/js'));
+
+    $temporary_fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+    $temporary_file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $temporary_fid));
+    $this->assertEqual($temporary_file->status, FILE_STATUS_TEMPORARY, 'File is temporary.');
+
+    // Close another form.
+    $this->drupalGet('node/add/page');
+    $this->startAHAHRequests();
+
+    $edit = array(
+      'files[upload]' => $image1->filename,
+    );
+    // Press 'Attach' button through AHAH, and place the expected HTML result
+    // as the tested content.
+    $this->drupalPost(NULL, $edit, array('op' => t('Attach'), 'path' => 'upload/js'));
+
+    $first_fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+    $this->assertNotEqual($first_fid, $temporary_fid, 'Uploaded file id is correct.');
+    $this->assertField('files[' . $first_fid . '][description]', $image1->basename, 'First file uploaded successfully.');
+    $first_file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $first_fid));
+    $this->assertEqual($first_file->status, FILE_STATUS_TEMPORARY, 'File is termporary.');
+
+    $this->prepareNextAHAHRequest();
+
+    $first_filename = $this->randomName();
+    // Perform another ahah request.
+    $edit = array(
+      'files[' . $first_fid . '][description]' => $first_filename,
+      'files[upload]' => $image2->filename,
+    );
+    $this->drupalPost(NULL, $edit, array('op' => t('Attach'), 'path' => 'upload/js'));
+
+    // Check the first file and it's name.
+    $new_first_file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $first_fid));
+    $this->assertEqual($new_first_file->status, FILE_STATUS_TEMPORARY, 'First file is still temporary');
+    $this->assertField('files[' . $first_fid . '][description]', $image1->basename, 'Image name field present.');
+
+    // Check the second file.
+    $second_fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+    $this->assertNotEqual($second_fid, $first_fid, 'Second fid is correct');
+    $this->assertField('files[' . $second_fid . '][description]', $image2->basename, 'Second file uploaded successfully.');
+    $second_file = db_fetch_object(db_query("SELECT * FROM {files} WHERE fid = %d", $first_fid));
+    $this->assertEqual($second_file->status, FILE_STATUS_TEMPORARY, 'Second file is termporary.');
+
+    $this->prepareNextAHAHRequest();
+
+    // Perform another ahah request. Remove "list" flag from the second file, upload third file.
+    $edit = array(
+      'files[' . $second_fid . '][list]' => FALSE,
+      'files[upload]' => $image3->filename,
+    );
+    $this->drupalPost(NULL, $edit, array('op' => t('Attach'), 'path' => 'upload/js'));
+
+    $third_fid = db_result(db_query("SELECT MAX(fid) FROM {files}"));
+    $this->assertNotEqual($third_fid, $second_fid, 'Third fid is correct');
+
+    $this->prepareNextAHAHRequest();
+
+    // Perform another ahah request. Set "remove" flag to the third file.
+    $edit = array(
+      'files[' . $third_fid . '][remove]' => TRUE,
+    );
+    $this->drupalPost(NULL, $edit, array('op' => t('Attach'), 'path' => 'upload/js'));
+
+    $this->assertFieldByName('files[' . $third_fid . '][remove]', TRUE, 'Third file is marked for removal.');
+
+    $this->prepareNextAHAHRequest();
+
+    $node_title = $this->randomName();
+    $edit = array(
+      'title' => $node_title,
+    );
+    // Finally, submit the form.
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    $node = $this->drupalGetNodeByTitle($node_title);
+    $this->assertEqual(count($node->files), 2, 'Two files uploaded.');
+    $this->assertEqual($node->files[$first_fid]->description, $first_filename, 'First file uploaded correctly.');
+    $this->assertEqual($node->files[$second_fid]->list, FALSE, 'Second file uploaded correctly.');
+
+    // Set termporary file timestamp to check file removal.
+    db_query("UPDATE {files} SET timestamp = timestamp - 86400 WHERE fid = %d", $temporary_fid);
+
+    $this->cronRun();
+    $this->assertFalse(is_file($temporary_file->filepath), 'Temporary file was removed from disk.');
+    $this->assertFalse(db_result(db_query("SELECT fid FROM {files} WHERE fid = %d", $temporary_fid)), 'Temporary file was removed from database.');
+  }
+}
