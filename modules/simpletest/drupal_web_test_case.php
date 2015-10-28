@@ -1680,7 +1680,8 @@ class DrupalWebTestCase extends DrupalTestCase {
       }
     }
 
-    $this->drupalSetContent($content, isset($original_url) ? $original_url : curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL));
+    $this->drupalSetContent($content, isset($original_url) ? $original_url : curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL),
+                             $status);
     $message_vars = array(
       '!method' => !empty($curl_options[CURLOPT_NOBODY]) ? 'HEAD' : (empty($curl_options[CURLOPT_POSTFIELDS]) ? 'GET' : 'POST'),
       '@url' => isset($original_url) ? $original_url : $url,
@@ -2317,10 +2318,15 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to, defaults to 'Other'.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
-  protected function assertNoLink($label, $message = '', $group = 'Other') {
+  protected function assertNoLink($label, $message = '', $group = 'Other', $ignore_response = FALSE) {
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to contain links labeled with \"$label\" but page was not loaded successfully (last response was {$this->http_code})");
+    }
     $links = $this->xpath('//a[text()="' . $label . '"]');
     $message = ($message ?  $message : t('Link with label "!label" not found.', array('!label' => $label)));
     return $this->assert(empty($links), $message, $group);
@@ -2356,11 +2362,16 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to, defaults to 'Other'.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    *
    * @return
    *   TRUE if the assertion succeeded, FALSE otherwise.
    */
-  protected function assertNoLinkByHref($href, $message = '', $group = 'Other') {
+  protected function assertNoLinkByHref($href, $message = '', $group = 'Other', $ignore_response = FALSE) {
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to contain links with href \"$href\" but page was not loaded successfully (last response was {$this->http_code})");
+    }
     $links = $this->xpath('//a[contains(@href, :href)]', array(':href' => $href));
     $message = ($message ?  $message : t('No link containing href %href found.', array('%href' => $href)));
     return $this->assert(empty($links), $message, $group);
@@ -2563,11 +2574,12 @@ class DrupalWebTestCase extends DrupalTestCase {
    * the page the content can be set and page elements can be checked to ensure
    * that the function worked properly.
    */
-  protected function drupalSetContent($content, $url = 'internal:') {
+  protected function drupalSetContent($content, $url = 'internal:', $code = 200) {
     $this->content = $content;
     $this->url = $url;
     $this->plainTextContent = FALSE;
     $this->elements = FALSE;
+    $this->http_code = $code;
   }
 
   /**
@@ -2632,12 +2644,17 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to, defaults to 'Other'.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoRaw($raw, $message = '', $group = 'Other') {
+  protected function assertNoRaw($raw, $message = '', $group = 'Other', $ignore_response = FALSE) {
     if (!$message) {
       $message = t('Raw "@raw" not found', array('@raw' => check_plain($raw)));
+    }
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to match raw value \"$raw\" but page was not loaded successfully (last response was {$this->http_code})");
     }
     return $this->assert(strpos($this->content, $raw) === FALSE, $message, $group, NULL, t("Expected \"@content\"\n\n not to match \"@raw\"", array('@raw' => $raw, '@content' => $this->content)));
   }
@@ -2653,6 +2670,8 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to, defaults to 'Other'.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
@@ -2671,11 +2690,16 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to, defaults to 'Other'.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoText($text, $message = '', $group = 'Other') {
-    return $this->assertTextHelper($text, $message, $group, TRUE);
+  protected function assertNoText($text, $message = '', $group = 'Other', $ignore_response = FALSE) {
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to match text \"$text\" but page was not loaded successfully (last response was {$this->http_code})");
+    }
+    return $this->assertTextHelper($text, $message, $group, TRUE, $ignore_response);
   }
 
   /**
@@ -2817,12 +2841,17 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoPattern($pattern, $message = '', $group = 'Other') {
+  protected function assertNoPattern($pattern, $message = '', $group = 'Other', $ignore_response = FALSE) {
     if (!$message) {
       $message = t('Pattern "@pattern" not found', array('@pattern' => $pattern));
+    }
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to match pattern \"$pattern\" but page was not loaded successfully (last response was {$this->http_code})");
     }
     $result = !preg_match($pattern, $this->drupalGetContent());
     return $this->assert($result, $message, $group, NULL, $result? '': t("Expected raw content NOT to match pattern \"@pattern\"\n\n but found:\n\"@raw\"", array('@raw' => $this->content, '@pattern' => $pattern)));
@@ -2860,10 +2889,15 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoTitle($title, $message = '', $group = 'Other') {
+  protected function assertNoTitle($title, $message = '', $group = 'Other', $ignore_response = FALSE) {
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page title not to be equal to \"$title\" but page was not loaded successfully (last response was {$this->http_code})");
+    }
     $actual = (string) current($this->xpath('//title'));
     if (!$message) {
       $message = t('Page title @actual is not equal to @unexpected.', array(
@@ -2959,11 +2993,17 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   (optional) Message to display.
    * @param $group
    *   (optional) The group this message belongs to.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    *
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoFieldByXPath($xpath, $value = NULL, $message = '', $group = 'Other') {
+  protected function assertNoFieldByXPath($xpath, $value = NULL, $message = '', $group = 'Other', $ignore_response= FALSE) {
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to contain fields by xpath \"$xpath\" but page was not loaded successfully (last response was {$this->http_code})");
+    }
+
     $fields = $this->xpath($xpath);
 
     // If value specified then check array for match.
@@ -3028,10 +3068,15 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   (optional) Message to display.
    * @param $group
    *   The group this message belongs to.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoFieldByName($name, $value = '', $message = '') {
+  protected function assertNoFieldByName($name, $value = '', $message = '', $ignore_response = FALSE) {
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to contain field by name \"$name\" but page was not loaded successfully (last response was {$this->http_code})");
+    }
     return $this->assertNoFieldByXPath($this->constructFieldXpath('name', $name), $value, $message ? $message : t('Did not find field by name @name', array('@name' => $name)), t('Browser'));
   }
 
@@ -3064,10 +3109,15 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoFieldById($id, $value = '', $message = '') {
+  protected function assertNoFieldById($id, $value = '', $message = '', $ignore_response = FALSE) {
+    if (!$ignore_response && $this->http_code != 200) {
+      return $this->fail("Expected page not to contain field with id \"$id\" but page was not loaded successfully (last response was {$this->http_code})");
+    }
     return $this->assertNoFieldByXPath($this->constructFieldXpath('id', $id), $value, $message ? $message : t('Did not find field by id @id', array('@id' => $id)), t('Browser'));
   }
 
@@ -3162,11 +3212,13 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Message to display.
    * @param $group
    *   The group this message belongs to.
+   * @param $ignore_response
+   *   Assertion will fail if last response status was not 200. TRUE will skip checking.
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoField($field, $message = '', $group = 'Other') {
-    return $this->assertNoFieldByXPath($this->constructFieldXpath('name', $field) . '|' . $this->constructFieldXpath('id', $field), '', $message, $group);
+  protected function assertNoField($field, $message = '', $group = 'Other', $ignore_response = FALSE) {
+    return $this->assertNoFieldByXPath($this->constructFieldXpath('name', $field) . '|' . $this->constructFieldXpath('id', $field), '', $message, $group, $ignore_response);
   }
 
   /**
@@ -3225,9 +3277,8 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Assertion result.
    */
   protected function assertResponse($code, $message = '') {
-    $curl_code = curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE);
-    $match = is_array($code) ? in_array($curl_code, $code) : $curl_code == $code;
-    return $this->assertTrue($match, $message ? $message : t('HTTP response expected !code, actual !curl_code', array('!code' => $code, '!curl_code' => $curl_code)), t('Browser'));
+    $match = is_array($code) ? in_array($this->http_code, $code) : $this->http_code == $code;
+    return $this->assertTrue($match, $message ? $message : t('HTTP response expected !code, actual !curl_code', array('!code' => $code, '!curl_code' => $this->http_code)), t('Browser'));
   }
 
   /**
@@ -3243,9 +3294,8 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   Assertion result.
    */
   protected function assertNoResponse($code, $message = '') {
-    $curl_code = curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE);
-    $match = is_array($code) ? in_array($curl_code, $code) : $curl_code == $code;
-    return $this->assertFalse($match, $message ? $message : t('HTTP response not expected !code, actual !curl_code', array('!code' => $code, '!curl_code' => $curl_code)), t('Browser'));
+    $match = is_array($code) ? in_array($this->http_code, $code) : $this->http_code == $code;
+    return $this->assertFalse($match, $message ? $message : t('HTTP response not expected !code, actual !curl_code', array('!code' => $code, '!curl_code' => $this->http_code)), t('Browser'));
   }
 
   /**
