@@ -1483,6 +1483,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     }
 
     if (preg_match('/simpletest\d+/', $db_prefix)) {
+      $previous_prefix = $db_prefix;
       // Delete temporary files directory.
 //      file_unmanaged_delete_recursive(file_directory_path());
       simpletest_clean_temporary_directory(file_directory_path());
@@ -1544,6 +1545,14 @@ class DrupalWebTestCase extends DrupalTestCase {
 //      if ($this->originalLanguageDefault) {
 //        $GLOBALS['conf']['language_default'] = $this->originalLanguageDefault;
 //      }
+      $orphaned_tables = array();
+      $result = db_query("SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_name LIKE '%s%%'", $previous_prefix);
+      while ($table = db_fetch_array($result)) {
+        $orphaned_tables[] = $table['table_name'];
+      }
+      if (count($orphaned_tables) > 0) {
+        $this->assert('exception', format_string('The test %class::%method ran successfully but has left behind %count orphaned tables: %tables. Please check modules schema and/or uninstall hook.', array('%class' => get_class($this), '%method' => $GLOBALS['current_test_method'], '%count' => count($orphaned_tables), '%tables' => implode(', ', $orphaned_tables))));
+      }
 
       // Close the CURL handler.
       $this->curlClose();

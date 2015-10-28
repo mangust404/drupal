@@ -145,6 +145,10 @@ class SchemaTestCase extends DrupalWebTestCase {
     }
     catch (Exception $e) {}
     $this->assertTrue(db_table_exists('test_timestamp'), 'Table with database specific datatype was created.');
+
+    // Cleanup
+    db_drop_table($ret, 'test_table');
+    db_drop_table($ret, 'test_timestamp');
   }
 
   function tryInsert($table = 'test_table') {
@@ -231,6 +235,9 @@ class SchemaTestCase extends DrupalWebTestCase {
       $this->assertTrue(db_field_exists($table_name, $column_name), format_string('Unsigned @type column was created.', array('@type' => $column_spec['type'])));
       $this->assertFalse($this->tryUnsignedInsert($table_name, $column_name), format_string('Unsigned @type column rejected a negative value.', array('@type' => $column_spec['type'])));
     }
+
+    // Cleanup
+    db_drop_table($ret, 'unsigned_table');
   }
 
   /**
