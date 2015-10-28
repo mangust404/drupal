@@ -497,6 +497,7 @@ function user_admin_settings() {
     '#size' => 15,
     '#maxlength' => 10,
     '#description' => t('Maximum file size for pictures, in kB.'),
+    '#element_validate' => array('element_validate_integer_positive'),
   );
   $form['pictures']['settings']['user_picture_guidelines'] = array(
     '#type' => 'textarea',
@@ -638,7 +639,7 @@ function user_admin_role() {
   $rid = arg(4);
   if ($rid) {
     if ($rid == DRUPAL_ANONYMOUS_RID || $rid == DRUPAL_AUTHENTICATED_RID) {
-      drupal_goto('admin/user/roles');
+      return drupal_access_denied();
     }
     // Display the edit role form.
     $role = db_fetch_object(db_query('SELECT * FROM {role} WHERE rid = %d', $rid));

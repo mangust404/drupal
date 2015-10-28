@@ -66,13 +66,16 @@ function throttle_exit() {
     $throttle = throttle_status();
 
     if ($max_guests = variable_get('throttle_anonymous', 0)) {
-      $guests = sess_count(time() - $time_period, TRUE);
+      // Bootstrap code from D7 doesn't open a session for anonymous users so the
+      // code above is useless. TODO: rewrite throttle mechanics.
+      $guests = db_result(db_query('SELECT COUNT(DISTINCT s.uid) FROM {sessions} s WHERE s.timestamp >= %d AND s.uid = 0', time() - $time_period));
     }
     else {
       $guests = 0;
     }
     if ($max_users = variable_get('throttle_user', 0)) {
-      $users = sess_count(time() - $time_period, FALSE);
+      // The code above is not performance-friendly. TODO: rewrite throttle mechanics.
+      $users = db_result(db_query('SELECT COUNT(DISTINCT s.uid) FROM {sessions} s WHERE s.timestamp >= %d AND s.uid > 0', time() - $time_period));
     }
     else {
       $users = 0;

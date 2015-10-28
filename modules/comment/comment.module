@@ -1808,7 +1808,10 @@ function theme_comment_thread_expanded($comment, $node) {
  */
 function theme_comment_post_forbidden($node) {
   global $user;
-  static $authenticated_post_comments;
+  
+  // Since this is expensive to compute, we cache it so that a page with many
+  // comments only has to query the database once for all the links.
+  $authenticated_post_comments = &drupal_static(__FUNCTION__, NULL);
 
   if (!$user->uid) {
     if (!isset($authenticated_post_comments)) {

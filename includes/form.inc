@@ -2249,8 +2249,8 @@ function expand_password_confirm($element) {
  */
 function password_confirm_validate($form, &$form_state) {
   $pass1 = trim($form['pass1']['#value']);
-  if (!empty($pass1)) {
-    $pass2 = trim($form['pass2']['#value']);
+  $pass2 = trim($form['pass2']['#value']);
+  if (!empty($pass1) || !empty($pass2)) {
     if (strcmp($pass1, $pass2)) {
       form_error($form, t('The specified passwords do not match.'));
     }

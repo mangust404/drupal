@@ -284,7 +284,8 @@ class BookTestCase extends DrupalWebTestCase {
 
     // Load the book and verify there is no printer-friendly version link.
     $this->drupalGet('node/' . $this->book->nid);
-    $this->assertNoLink(t('Printer-friendly version'), 'Anonymous user is not shown link to printer-friendly version.');
+    $this->assertResponse(403);
+    $this->assertNoLink(t('Printer-friendly version'), 'Anonymous user is not shown link to printer-friendly version.', 'Other', TRUE);
 
     // Try getting the URL directly, and verify it fails.
     $this->drupalGet('book/export/html/' . $this->book->nid);

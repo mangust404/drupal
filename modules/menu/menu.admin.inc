@@ -549,6 +549,9 @@ function menu_edit_menu_submit($form, &$form_state) {
       menu_link_save($link);
     }
   }
+
+  cache_clear_all('menu_custom', 'cache_menu');
+
   $form_state['redirect'] = $path . $menu['menu_name'];
 }
 

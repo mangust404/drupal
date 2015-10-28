@@ -47,12 +47,10 @@
   - Translation
   - Trigger
   - Update
-  - Upload (written from the scratch)
-
-Module tests on the way:
- - User
+  - Upload (written from the scratch but not complete)
+  - User
 
 Core modules without tests:
  - OpenID (not significant)
  - Ping (not present in D7)
- - Throttle
+ - Throttle (entire module should be refactored because of a bad performance)

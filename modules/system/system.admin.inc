@@ -1599,7 +1599,7 @@ function system_date_time_settings() {
   $form['locale']['date_default_timezone'] = array(
     '#type' => 'select',
     '#title' => t('Default time zone'),
-    '#default_value' => variable_get('date_default_timezone', 0),
+    '#default_value' => variable_get('date_default_timezone', drupal_get_user_timezone()),
     '#options' => $zones,
     '#description' => t('Select the default site time zone.')
   );

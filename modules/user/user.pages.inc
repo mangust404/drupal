@@ -34,6 +34,7 @@ function user_pass() {
     '#size' => 60,
     '#maxlength' => max(USERNAME_MAX_LENGTH, EMAIL_MAX_LENGTH),
     '#required' => TRUE,
+    '#default_value' => isset($_GET['name']) ? $_GET['name'] : '',
   );
   $form['submit'] = array('#type' => 'submit', '#value' => t('E-mail new password'));
 
@@ -91,10 +92,10 @@ function user_pass_reset(&$form_state, $uid, $timestamp, $hashed_pass, $action =
   }
   else {
     // Time out, in seconds, until login URL expires. 24 hours = 86400 seconds.
-    $timeout = 86400;
-    $current = time();
+    $timeout = variable_get('user_password_reset_timeout', 86400);
+    $current = REQUEST_TIME;
     // Some redundant checks for extra security ?
-    if ($timestamp < $current && $account = user_load(array('uid' => $uid, 'status' => 1)) ) {
+    if ($timestamp <= $current && $account = user_load(array('uid' => $uid, 'status' => 1)) ) {
       // Deny one-time login to blocked accounts.
       if (drupal_is_denied('user', $account->name) || drupal_is_denied('mail', $account->mail)) {
         drupal_set_message(t('You have tried to use a one-time login for an account which has been blocked.'), 'error');
@@ -106,7 +107,7 @@ function user_pass_reset(&$form_state, $uid, $timestamp, $hashed_pass, $action =
         drupal_set_message(t('You have tried to use a one-time login link that has expired. Please request a new one using the form below.'));
         drupal_goto('user/password');
       }
-      else if ($account->uid && $timestamp > $account->login && $timestamp < $current && $hashed_pass == user_pass_rehash($account->pass, $timestamp, $account->login, $account->uid)) {
+      elseif ($account->uid && $timestamp >= $account->login && $timestamp <= $current && $hashed_pass == user_pass_rehash($account->pass, $timestamp, $account->login, $account->uid)) {
         // First stage is a confirmation form, then login
         if ($action == 'login') {
           watchdog('user', 'User %name used one-time login link at time %timestamp.', array('%name' => $account->name, '%timestamp' => $timestamp));
@@ -115,8 +116,11 @@ function user_pass_reset(&$form_state, $uid, $timestamp, $hashed_pass, $action =
           // user_authenticate_finalize() also updates the login timestamp of the
           // user, which invalidates further use of the one-time login link.
           user_authenticate_finalize($form_state['values']);
+          // Let the user's password be changed without the current password check.
+          $token = drupal_random_key();
+          $_SESSION['pass_reset_' . $user->uid] = $token;
           drupal_set_message(t('You have just used your one-time login link. It is no longer necessary to use this link to login. Please change your password.'));
-          drupal_goto('user/'. $user->uid .'/edit');
+          drupal_goto('user/'. $user->uid .'/edit', array('query' => array('pass-reset-token' => $token)));
         }
         else {
           $form['message'] = array('#value' => t('<p>This is a one-time login for %user_name and will expire on %expiration_date.</p><p>Click on this button to login to the site and change your password.</p>', array('%user_name' => $account->name, '%expiration_date' => format_date($timestamp + $timeout))));
@@ -289,6 +293,11 @@ function user_profile_form_submit($form, &$form_state) {
   unset($form_state['values']['_account'], $form_state['values']['op'], $form_state['values']['submit'], $form_state['values']['delete'], $form_state['values']['form_token'], $form_state['values']['form_id'], $form_state['values']['_category']);
   user_module_invoke('submit', $form_state['values'], $account, $category);
   user_save($account, $form_state['values'], $category);
+
+  if ($category == 'account' && !empty($edit['pass'])) {
+    // Remove the password reset tag since a new password was saved.
+    unset($_SESSION['pass_reset_'. $account->uid]);
+  }
 
   // Clear the page cache because pages can contain usernames and/or profile information:
   cache_clear_all();

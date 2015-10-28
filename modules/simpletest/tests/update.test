@@ -18,7 +18,7 @@ class UpdateTestCase extends DrupalWebTestCase {
   }
 
   function setUp() {
-    parent::setUp('update_test');
+    parent::setUp('update_test_1');
     // set root password
     db_query("UPDATE {users} SET pass = '%s', name = '%s', status = 1 WHERE uid = 1", md5('test'), 'root');
     $this->root_user = db_fetch_object(db_query("SELECT * FROM {users} WHERE uid = 1"));
@@ -29,16 +29,16 @@ class UpdateTestCase extends DrupalWebTestCase {
    * Test that update works.
    */
   function testUpdateModule() {
-    $this->assertFalse(variable_get('update_test_update_1', FALSE), 'Update 1 was not performed');
-    $this->assertFalse(variable_get('update_test_update_2', FALSE), 'Update 2 was not performed');
+    $this->assertFalse(variable_get('update_test_1_update_1', FALSE), 'Update 1 was not performed');
+    $this->assertFalse(variable_get('update_test_1_update_2', FALSE), 'Update 2 was not performed');
 
-    $schema_version = db_result(db_query("SELECT schema_version FROM {system} WHERE name = 'update_test'"));
+    $schema_version = db_result(db_query("SELECT schema_version FROM {system} WHERE name = 'update_test_1'"));
 
     $this->assertEqual($schema_version, 2, 'Schema version is the latest');
 
     // Set schema version to 0 so drupal update script will think that module
     // should be updated
-    db_query("UPDATE {system} SET schema_version = 0 WHERE name = 'update_test'");
+    db_query("UPDATE {system} SET schema_version = 0 WHERE name = 'update_test_1'");
 
     $this->drupalLogin($this->root_user);
     $this->drupalGet('update.php');
@@ -46,7 +46,7 @@ class UpdateTestCase extends DrupalWebTestCase {
 
     $this->drupalPost(NULL, array(), t('Continue'));
 
-    $selected_update_test = $this->xpath('//select[@name="start[update_test]"]/option[@selected="selected"]');
+    $selected_update_test = $this->xpath('//select[@name="start[update_test_1]"]/option[@selected="selected"]');
     $this->assertEqual($selected_update_test[0]->attributes()->value, 2, 'Selected update is the latest');
 
     $selected_system_test = $this->xpath('//select[@name="start[system]"]/option[@selected="selected"]');
@@ -54,32 +54,32 @@ class UpdateTestCase extends DrupalWebTestCase {
 
     // Run only first update from the list. Second update should not run.
     $edit = array(
-      'start[update_test]' => 1
+      'start[update_test_1]' => 1
     );
     $this->drupalPost(NULL, $edit, t('Update'));
-    $this->assertTrue(variable_get('update_test_update_1', FALSE), 'Update 1 was performed');
-    $this->assertFalse(variable_get('update_test_update_2', FALSE), 'Update 2 was not performed');
+    $this->assertTrue(variable_get('update_test_1_update_1', FALSE), 'Update 1 was performed');
+    $this->assertFalse(variable_get('update_test_1_update_2', FALSE), 'Update 2 was not performed');
     $this->assertText('The following queries were executed');
     $this->assertRaw('<li class="success">SELECT \'update success\'</li>');
 
     // "Forget" about first update
-    variable_del('update_test_update_1');
+    variable_del('update_test_1_update_1');
 
     // Run second update
     $this->drupalGet('update.php');
     $this->assertText('Drupal database update');
     $this->drupalPost(NULL, array(), t('Continue'));
 
-    $selected_update_test = $this->xpath('//select[@name="start[update_test]"]/option[@selected="selected"]');
+    $selected_update_test = $this->xpath('//select[@name="start[update_test_1]"]/option[@selected="selected"]');
     $this->assertEqual($selected_update_test[0]->attributes()->value, 2, 'Selected update is the latest');
 
     $edit = array(
-      'start[update_test]' => 2
+      'start[update_test_1]' => 2
     );
     $this->drupalPost(NULL, $edit, t('Update'));
 
-    $this->assertFalse(variable_get('update_test_update_1', FALSE), 'Update 1 was not performed twice');
-    $this->assertTrue(variable_get('update_test_update_2', FALSE), 'Update 2 was performed');
+    $this->assertFalse(variable_get('update_test_1_update_1', FALSE), 'Update 1 was not performed twice');
+    $this->assertTrue(variable_get('update_test_1_update_2', FALSE), 'Update 2 was performed');
     $this->assertRaw('<li class="failure"><strong>Failed:</strong> SELECT \'update failure\'</li>');
 
   }

@@ -592,9 +592,8 @@ function drupal_goto($path = '', $options = array(), $http_response_code = 302) 
     module_invoke_all('exit', $url);
   }
 
-  // Even though session_write_close() is registered as a shutdown function, we
-  // need all session data written to the database before redirecting.
-  session_write_close();
+  // We need all session data written to the database before redirecting.
+  drupal_session_commit();
 
   header('Location: '. $url, TRUE, $http_response_code);
 
@@ -1297,13 +1296,34 @@ function valid_url($url, $absolute = FALSE) {
  */
 
 /**
+ * Helper function for flood event hostname processing.
+ *
+ * @param $identifier
+ *   Optional identifier (defaults to the current user's IP address).
+ * @return
+ *   User's IP address if no identifier provided. Otherwise returns a long-strings-safe one.
+ */
+function flood_get_identifier($identifier = NULL) {
+  if (empty($identifier)) {
+    $identifier = ip_address();
+  }
+  else if(strlen($identifier) > 128) {
+    // Make a hash from identifier if it's longer than 128 chars.
+    $identifier = md5($identifier);
+  }
+  return $identifier;
+}
+
+/**
  * Register an event for the current visitor (hostname/IP) to the flood control mechanism.
  *
  * @param $name
  *   The name of an event.
+ * @param $identifier
+ *   Optional identifier (defaults to the current user's IP address).
  */
-function flood_register_event($name) {
-  db_query("INSERT INTO {flood} (event, hostname, timestamp) VALUES ('%s', '%s', %d)", $name, ip_address(), time());
+function flood_register_event($name, $identifier = NULL) {
+  db_query("INSERT INTO {flood} (event, hostname, timestamp) VALUES ('%s', '%s', %d)", $name, flood_get_identifier($identifier), time());
 }
 
 /**
@@ -1316,12 +1336,26 @@ function flood_register_event($name) {
  *   The name of the event.
  * @param $threshold
  *   The maximum number of the specified event per hour (per visitor).
+ * @param $identifier
+ *   Optional identifier (defaults to the current user's IP address).
  * @return
  *   True if the user did not exceed the hourly threshold. False otherwise.
  */
-function flood_is_allowed($name, $threshold) {
-  $number = db_result(db_query("SELECT COUNT(*) FROM {flood} WHERE event = '%s' AND hostname = '%s' AND timestamp > %d", $name, ip_address(), time() - 3600));
+function flood_is_allowed($name, $threshold, $identifier = NULL) {
+  $number = db_result(db_query("SELECT COUNT(*) FROM {flood} WHERE event = '%s' AND hostname = '%s' AND timestamp > %d", $name, flood_get_identifier($identifier), time() - 3600));
   return ($number < $threshold ? TRUE : FALSE);
+}
+
+/**
+ * Makes the flood control mechanism forget an event for the current visitor.
+ *
+ * @param $name
+ *   The name of an event.
+ * @param $identifier
+ *   Optional identifier (defaults to the current user's IP address).
+ */
+function flood_clear_event($name, $identifier = NULL) {
+  db_query("DELETE FROM {flood} WHERE event = '%s' AND hostname = '%s'", $name, flood_get_identifier($identifier));
 }
 
 function check_file($filename) {

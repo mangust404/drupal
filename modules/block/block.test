@@ -192,8 +192,9 @@ class BlockTestCase extends DrupalWebTestCase {
     $this->drupalGet('user');
     $this->assertNoText($title, 'Block was not displayed according to block visibility rules.');
 
-    $this->drupalGet('USER/' . $this->admin_user->uid);
-    $this->assertNoText($title, 'Block was not displayed according to block visibility rules regardless of path case.');
+    // D6 doesn't support case independent path.
+    //$this->drupalGet('USER/' . $this->admin_user->uid);
+    //$this->assertNoText($title, 'Block was not displayed according to block visibility rules regardless of path case.');
 
     // Confirm that the block is not displayed to anonymous users.
     $this->drupalLogout();

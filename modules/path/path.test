@@ -88,7 +88,7 @@ class PathTestCase extends DrupalWebTestCase {
     drupal_static_reset('drupal_lookup_path');
     // Confirm that previous alias no longer works.
     $this->drupalGet($previous);
-    $this->assertNoText($node1->title, 'Previous alias no longer works.');
+    $this->assertNoText($node1->title, 'Previous alias no longer works.', 'Other', TRUE);
     $this->assertResponse(404);
 
     // Create second test node.
@@ -108,7 +108,7 @@ class PathTestCase extends DrupalWebTestCase {
 
     // Confirm that the alias no longer works.
     $this->drupalGet($edit['dst']);
-    $this->assertNoText($node1->title, 'Alias was successfully deleted.');
+    $this->assertNoText($node1->title, 'Alias was successfully deleted.', 'Other', TRUE);
     $this->assertResponse(404);
   }
 
@@ -143,7 +143,7 @@ class PathTestCase extends DrupalWebTestCase {
 
     // Make sure that previous alias no longer works.
     $this->drupalGet($previous);
-    $this->assertNoText($node1->title, 'Previous alias no longer works.');
+    $this->assertNoText($node1->title, 'Previous alias no longer works.', 'Other', TRUE);
     $this->assertResponse(404);
 
     // Create second test node.
@@ -161,7 +161,7 @@ class PathTestCase extends DrupalWebTestCase {
 
     // Confirm that the alias no longer works.
     $this->drupalGet($edit['path']);
-    $this->assertNoText($node1->title, 'Alias was successfully deleted.');
+    $this->assertNoText($node1->title, 'Alias was successfully deleted.', 'Other', TRUE);
     $this->assertResponse(404);
   }
 

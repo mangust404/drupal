@@ -923,7 +923,10 @@ class CommentInterfaceTest extends CommentHelperCase {
         // authenticated users are allowed to post comments.
         // @see theme_comment_post_forbidden()
         if (!$this->loggedInUser) {
-          if (user_access('post comments', $this->web_user)) {
+          // In D6 'post comments without approval' also gives 'post comments' access because
+          // permissions are stored in one field separated by comma. Bad design indeed.
+          // TODO: make "correct" permissions table.
+          if (user_access('post comments', $this->web_user) || user_access('post comments without approval')) {
             // The note depends on whether users are actually able to register.
             if ($info['user_register']) {
               $this->assertText('Login or register to post comments');
