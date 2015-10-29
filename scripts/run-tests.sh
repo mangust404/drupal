@@ -96,6 +96,9 @@ simpletest_script_reporter_init();
 db_query('INSERT INTO {simpletest_test_id} VALUES (default)');
 $test_id = db_last_insert_id('simpletest_test_id', 'test_id');
 
+// Index initialize
+cache_set($test_id . '_index', 1, 'cache');
+
 // Execute tests.
 simpletest_script_command($args['concurrency'], $test_id, implode(",", $test_list));
 
@@ -110,6 +113,8 @@ simpletest_script_reporter_display_results();
 
 // Cleanup our test results.
 simpletest_clean_results_table($test_id);
+
+cache_clear_all($test_id . '_index', 'cache');
 
 /**
  * Print help text.
@@ -417,7 +422,13 @@ function simpletest_script_run_one_test($test_id, $test_class) {
 
   $status = ((isset($test->results['#fail']) && $test->results['#fail'] > 0)
            || (isset($test->results['#exception']) && $test->results['#exception'] > 0) ? 'fail' : 'pass');
-  simpletest_script_print($info['name'] . ' ' . _simpletest_format_summary_line($test->results) . ($status == 'fail'? ' (' . $test_class . ')': '') . "\n", simpletest_script_color_code($status));
+
+  $data = cache_get($test_id . '_index', 'cache');
+  if (!empty($data->data)) {
+    $index = $data->data;
+    cache_set($test_id . '_index', $index + 1, 'cache');
+  }
+  simpletest_script_print((empty($index)? '': $index . '. ') . $info['name'] . ' ' . _simpletest_format_summary_line($test->results) . ($status == 'fail'? ' (' . $test_class . ')': '') . "\n", simpletest_script_color_code($status));
 }
 
 /**
@@ -533,7 +544,7 @@ function simpletest_script_reporter_init() {
 
   // Tell the user about what tests are to be run.
   if ($args['all']) {
-    echo "All tests will run.\n";
+    echo "All tests will run. Total: " . count($test_list) . ".\n";
   }
   else {
     echo "Tests to be run:\n";
