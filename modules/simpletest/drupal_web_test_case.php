@@ -2890,6 +2890,29 @@ class DrupalWebTestCase extends DrupalTestCase {
   }
 
   /**
+   * Pass if the page title is the given string.
+   *
+   * @param $title
+   *   The string the title should be.
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertTitleContains($title, $message = '', $group = 'Other') {
+    $actual = (string) current($this->xpath('//title'));
+    if (!$message) {
+      $message = t('Page title @actual contains @expected.', array(
+        '@actual' => var_export($actual, TRUE),
+        '@expected' => var_export($title, TRUE),
+      ));
+    }
+    return $this->assertTrue(strpos($actual, $title) !== FALSE, $message, $group);
+  }
+
+  /**
    * Pass if the page title is not the given string.
    *
    * @param $title
