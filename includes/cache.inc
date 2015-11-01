@@ -13,7 +13,12 @@
  *   @see cache_set()
  */
 function cache_get($cid, $table = 'cache') {
-  global $user;
+  global $user, $cache_queries;
+
+  if (variable_get('dev_query', 0)) {
+    list($usec, $sec) = explode(' ', microtime());
+    $timer = (float)$usec + (float)$sec;
+  }
 
   // Garbage collection necessary when enforcing a minimum cache lifetime
   $cache_flush = variable_get('cache_flush_'. $table, 0);
@@ -25,6 +30,7 @@ function cache_get($cid, $table = 'cache') {
   }
 
   $cache = db_fetch_object(db_query("SELECT data, created, headers, expire, serialized FROM {%s} WHERE cid = '%s'", $table, $cid));
+  $result = 0;
   if (isset($cache->data)) {
     // If the data is permanent or we're not enforcing a minimum cache lifetime
     // always return the cached data.
@@ -42,7 +48,7 @@ function cache_get($cid, $table = 'cache') {
     else {
       if (isset($user->cache) && $user->cache > $cache->created) {
         // This cache data is too old and thus not valid for us, ignore it.
-        return 0;
+        $result = 0;
       }
       else {
         $cache->data = db_decode_blob($cache->data);
@@ -51,9 +57,20 @@ function cache_get($cid, $table = 'cache') {
         }
       }
     }
-    return $cache;
+    $result = $cache;
   }
-  return 0;
+
+  if (variable_get('dev_query', 0)) {
+    // Do not include entire result because it may be really huge and consume
+    // a lot of memory. Client may see the cache contents by using provided link.
+    $query = "cache_get\n$cid:$table\n" . var_export(!empty($result), TRUE);
+    list($usec, $sec) = explode(' ', microtime());
+    $stop = (float)$usec + (float)$sec;
+    $diff = $stop - $timer;
+    $cache_queries[] = array($query, $diff);
+  }
+
+  return $result;
 }
 
 /**
@@ -103,6 +120,13 @@ function cache_get($cid, $table = 'cache') {
  *   @see cache_get()
  */
 function cache_set($cid, $data, $table = 'cache', $expire = CACHE_PERMANENT, $headers = NULL) {
+  global $cache_queries;
+
+  if (variable_get('dev_query', 0)) {
+    list($usec, $sec) = explode(' ', microtime());
+    $timer = (float)$usec + (float)$sec;
+  }
+
   $serialized = 0;
   if (!is_string($data)) {
     $data = serialize($data);
@@ -112,6 +136,14 @@ function cache_set($cid, $data, $table = 'cache', $expire = CACHE_PERMANENT, $he
   db_query("UPDATE {%s} SET data = %b, created = %d, expire = %d, headers = '%s', serialized = %d WHERE cid = '%s'", $table, $data, $created, $expire, $headers, $serialized, $cid);
   if (!db_affected_rows()) {
     @db_query("INSERT INTO {%s} (cid, data, created, expire, headers, serialized) VALUES ('%s', %b, %d, %d, '%s', %d)", $table, $cid, $data, $created, $expire, $headers, $serialized);
+  }
+
+  if (variable_get('dev_query', 0)) {
+    $query = "cache_set\n$cid:$table\n$data";
+    list($usec, $sec) = explode(' ', microtime());
+    $stop = (float)$usec + (float)$sec;
+    $diff = $stop - $timer;
+    $cache_queries[] = array($query, $diff);
   }
 }
 
@@ -134,7 +166,7 @@ function cache_set($cid, $data, $table = 'cache', $expire = CACHE_PERMANENT, $he
  *   TRUE and $cid is '*' then the entire table $table is emptied.
  */
 function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
-  global $user;
+  global $user, $cache_queries;
 
   if (!isset($cid) && !isset($table)) {
     // Clear the block cache first, so stale data will
@@ -142,6 +174,11 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
     cache_clear_all(NULL, 'cache_block');
     cache_clear_all(NULL, 'cache_page');
     return;
+  }
+
+  if (variable_get('dev_query', 0)) {
+    list($usec, $sec) = explode(' ', microtime());
+    $timer = (float)$usec + (float)$sec;
   }
 
   if (empty($cid)) {
@@ -186,6 +223,15 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
       db_query("DELETE FROM {%s} WHERE cid = '%s'", $table, $cid);
     }
   }
+
+  if (variable_get('dev_query', 0)) {
+    $affected_rows = db_affected_rows();
+    $query = "cache_clear_all\n$cid:$table, wildcard: " . var_export($wildcard, TRUE) . "\n$affected_rows";
+    list($usec, $sec) = explode(' ', microtime());
+    $stop = (float)$usec + (float)$sec;
+    $diff = $stop - $timer;
+    $cache_queries[] = array($query, $diff);
+  }
 }
 
 /**
@@ -201,5 +247,22 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
  *   TRUE if the cache bin specified is empty.
  */
 function cache_is_empty($bin) {
-  return db_result(db_query("SELECT COUNT(*) FROM {%s}", $bin)) == 0;
+  global $cache_queries;
+
+  if (variable_get('dev_query', 0)) {
+    list($usec, $sec) = explode(' ', microtime());
+    $timer = (float)$usec + (float)$sec;
+  }
+
+  $result = db_result(db_query("SELECT COUNT(*) FROM {%s}", $bin)) == 0;
+
+  if (variable_get('dev_query', 0)) {
+    $affected_rows = db_affected_rows();
+    $query = "cache_is_empty\n$bin\n" . var_dump($result, TRUE);
+    list($usec, $sec) = explode(' ', microtime());
+    $stop = (float)$usec + (float)$sec;
+    $diff = $stop - $timer;
+    $cache_queries[] = array($query, $diff);
+  }
+  return $result;
 }

@@ -1,0 +1,6 @@
+name = "Devel module tests"
+description = "Support module for devel testing."
+package = Testing
+version = VERSION
+core = 6.x
+hidden = TRUE

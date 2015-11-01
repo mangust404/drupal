@@ -1,0 +1,164 @@
+<?php
+
+/**
+ * @file
+ * Dummy module implementing some callbacks for devel testing
+ */
+
+/**
+ * Implements hook_menu().
+ *
+ */
+function devel_test_menu() {
+  $items = array();
+  $items['devel/test/db_query'] = array(
+    'title' => 'Make a database query',
+    'page callback' => 'devel_test_database_query',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/slow_query'] = array(
+    'title' => 'Make a slow database query',
+    'page callback' => 'devel_test_database_query_slow',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/cache_query'] = array(
+    'title' => 'Make a cache query',
+    'page callback' => 'devel_test_cache_query',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/watchdog'] = array(
+    'title' => 'Watchdog test',
+    'page callback' => 'devel_test_watchdog_call',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/slow_page'] = array(
+    'title' => 'Execute a slow page',
+    'page callback' => 'devel_test_slow_page',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/included_files'] = array(
+    'title' => 'Include files',
+    'page callback' => 'devel_test_included_files',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/redirect_page'] = array(
+    'title' => 'Simple page with drupal_goto()',
+    'page callback' => 'devel_test_redirect_page',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/target_page'] = array(
+    'title' => 'This is a target page',
+    'page callback' => 'devel_test_target_page',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['devel/test/trigger_error'] = array(
+    'title' => 'A page with a error',
+    'page callback' => 'devel_test_trigger_error',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * A simple function which make a database query which can be detected
+ * via devel query console.
+ */
+function devel_test_database_query($name) {
+  db_query("SELECT '%s'", $name);
+  return 'Success';
+}
+
+/**
+ * A simple function which make a "slow" database query which should be
+ * highlighted in devel query console.
+ */
+function devel_test_database_query_slow($name) {
+  // Call the same function twice to check queries executed more than once are
+  // highlighted.
+  db_query("SELECT '%s is fast'", $name);
+  db_query("SELECT '%s is fast'", $name);
+
+  db_query("SELECT '%s is slow'", $name);
+  // It's very hard to implement slow database query on the database
+  // level so just simply altering queries log.
+  global $queries;
+  end($queries);
+  $last = key($queries);
+  $queries[$last][1] = 20.001;
+  return 'Success';
+}
+
+/**
+ * A simple function which make a cache query which can be detected
+ * via devel query console.
+ */
+function devel_test_cache_query($name) {
+  cache_set($name, '', 'cache');
+  cache_get($name, 'cache');
+  cache_clear_all($name, 'cache');
+  return 'Success';
+}
+
+/**
+ * Execute a watchdog error to check that watchdog records appear correctly.
+ */
+function devel_test_watchdog_call($name) {
+  watchdog('testing_single', 'Error at ' . $name, array(), WATCHDOG_ERROR);
+  // Invoke several watchdog notices to check grouping functionality.
+  for ($i = 0; $i < 5; $i++) {
+    watchdog('testing_mass', 'Error at ' . $name, array(), WATCHDOG_NOTICE);
+  }
+}
+
+/**
+ * Menu callback for emulating a page which runs slower than 150ms.
+ */
+function devel_test_slow_page() {
+  usleep(150);
+  return 'Success';
+}
+
+/**
+ * Menu callback to include a file and see it in the developer console.
+ */
+function devel_test_included_files() {
+  module_load_include('inc', 'devel_test');
+  return 'Success';
+}
+
+/**
+ * Dummy function invoking redirect to the target page.
+ * When 'devel_redirect_page' variable is set to true redirect to the other page
+ * will be printed on the separate page so you will be able to see all queries and
+ * debugging info.
+ */
+function devel_test_redirect_page() {
+  drupal_goto('devel/test/target_page');
+  return 'This text will not shown.';
+}
+
+/**
+ * Dummy page to test that redirect page is working properly.
+ */
+function devel_test_target_page() {
+  return 'Target page contents.';
+}
+
+/**
+ * Function which triggers a error to test the printed result.
+ */
+function devel_test_trigger_error($name) {
+  trigger_error('This is a notice ' . $name, E_USER_NOTICE);
+  trigger_error('This is a warning ' . $name, E_USER_WARNING);
+  trigger_error('This is a error ' . $name, E_USER_ERROR);
+  return 'Success.';
+}

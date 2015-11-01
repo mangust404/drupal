@@ -1,0 +1,279 @@
+<?php
+
+/**
+ * @file
+ * Tests for devel.module.
+ */
+
+/**
+ * Tests logging devel module functionality.
+ */
+class DevelLogTestCase extends DrupalWebTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Devel logging functionality',
+      'description' => 'Test query logging, page timing info, slow queries, API links, memory usage.',
+      'group' => 'Devel',
+    );
+  }
+
+  /**
+   * Enable modules and create users with specific permissions.
+   */
+  function setUp() {
+    parent::setUp('devel', 'devel_test');
+    // Create admin user.
+    $this->admin_user = $this->drupalCreateUser(array('access devel information'));
+    $this->drupalLogin($this->admin_user);
+
+    // Enable query logging
+    variable_set('dev_query', TRUE);
+  }
+
+  /**
+   * Tests query logging console.
+   */
+  function testDBQueryLog() {
+    variable_set('devel_query_display', TRUE);
+    $name = $this->randomName();
+    $this->drupalGet('devel/test/db_query/' . $name);
+
+    // Check database queries log.
+    $this->assertText('DB Query log');
+    $this->assertText('Queries taking longer than 5 ms and queries executed more than once, are highlighted.');
+    $this->assertPattern('/Executed [0-9]+ queries in [0-9\.]+ milliseconds\./', 'Executed database queries text found');
+    $this->assertRaw(check_plain("SELECT '$name'"));
+
+    // Disable query display.
+    variable_set('devel_query_display', FALSE);
+
+    // Console should not be displayed.
+    $this->drupalGet('devel/test/db_query/' . $name);
+    $this->assertNoText('DB Query log');
+    $this->assertNoRaw(check_plain("SELECT '$name'"));
+  }
+
+  /**
+   * Tests highlighting "slow" queries in console.
+   */
+  function testHighlightSlowQueries() {
+    variable_set('devel_query_display', TRUE);
+    // Setting safe devel execution time treshold to 2000ms. Assume that test will not be runned
+    // on the very slow environment that make database queries slower than 20 seconds.
+    variable_set('devel_execution', 20000);
+    $name = $this->randomName();
+    $this->drupalGet('devel/test/slow_query/' . $name);
+    $this->assertLink('devel_test_database_query_slow', 0, 'Link to api exists');
+
+    $markers = $this->xpath('//fieldset[@id="devel-query"]//div[contains(@class,:class)and contains(@class, "cell-1")]', array(':class' => 'marker'));
+    $this->assertNotEqual(count($markers), 0, 'Markers found');
+    foreach ($markers as $marker) {
+      $this->assertTrue(floatval((string)$marker) >= 20000, 'Valid execution time is highlighted: ' . (string)$marker);
+    }
+
+    // Set higher limit so "slow" query will be not marked.
+    variable_set('devel_execution', 20001);
+    $this->drupalGet('devel/test/slow_query/' . $name);
+
+    $markers = $this->xpath('//fieldset[@id="devel-query"]//div[contains(@class,:class)and contains(@class, "cell-1")]', array(':class' => 'marker'));
+    $this->assertEqual(count($markers), 0, 'Markers found');
+
+  }
+
+  /**
+   * Tests highlighting queries executed more than once.
+   */
+  function testHighlightMoreThanOnce() {
+    variable_set('devel_query_display', TRUE);
+
+    $name = $this->randomName();
+    $this->drupalGet('devel/test/slow_query/' . $name);
+    $this->assertLink('devel_test_database_query_slow', 0, 'Link to api exists');
+
+    $markers = $this->xpath('//fieldset[@id="devel-query"]//div[contains(@class,:class)and contains(@class, "cell-2")]', array(':class' => 'marker'));
+    $this->assertNotEqual(count($markers), 0, 'Markers found');
+    foreach ($markers as $marker) {
+      $this->assertTrue(intval((string)$marker) > 1, 'More than once execution is highlighted: ' . (string)$marker);
+    }
+  }
+
+  /**
+   * Tests cache queries logging in developer console.
+   */
+  function testCacheQueryLog() {
+    variable_set('devel_query_display', TRUE);
+    $name = $this->randomName();
+    $this->drupalGet('devel/test/cache_query/' . $name);
+    $this->assertText('Cache Query log');
+
+    $this->assertText("cache_set$name:cache");
+    $this->assertText("cache_get$name:cache");
+    $this->assertText("cache_clear_all$name:cache");
+
+    // Click on any result link. It should exist.
+    $this->clickLink('(see result)');
+    $this->assertResponse(200);
+
+    // Set a custom cache entry and try to fetch it by url.
+    $name = $this->randomName();
+    $value = $this->randomName();
+    cache_set($name, $value, 'cache');
+
+    // Test that cache entry is shown by url.
+    $this->drupalGet('devel/cache/cache/' . $name);
+    $this->assertText($value);
+
+    variable_set('devel_query_display', FALSE);
+    $this->drupalGet('devel/test/cache_query/' . $name);
+    $this->assertNoText('Cache Query log');
+  }
+
+  /**
+   * Tests page execution timer message.
+   */
+  function testPageTimer() {
+    // Enable timer message.
+    variable_set('dev_timer', TRUE);
+
+    $this->drupalGet('devel/test/slow_page');
+
+    $this->assertText('Page execution time was', 'Page execution message is visible.');
+
+    $matches = array();
+    if($this->assertTrue(preg_match('/Page execution time was ([0-9\.]+) ms\./s', $this->content, $matches), 'Execution timer found')) {
+      $this->assertTrue(floatval($matches[1]) > 150, 'Page was slower than 150ms.');
+    }
+
+    // Also enable query log to ensure that page execution timer still visible.
+    variable_set('devel_query_display', TRUE);
+    $this->drupalGet('devel/test/slow_page');
+    $this->assertText('Page execution time was', 'Page execution message is visible.');
+
+    // Disable dev_timer.
+    variable_set('dev_timer', FALSE);
+    $this->drupalGet('devel/test/slow_page');
+
+    $this->assertNoText('Page execution time was', 'Page execution message is hidden.');
+
+    // Also disable query logging.
+    variable_set('devel_query_display', FALSE);
+    $this->assertNoText('Page execution time was', 'Page execution message is hidden.');
+  }
+
+  /**
+   * Tests that api links to functions in query log are correct.
+   */
+  function testAPILinks() {
+    variable_set('devel_query_display', TRUE);
+
+    $version = devel_get_core_version(VERSION);
+    $api = $this->randomName(7) . '.org';
+    variable_set('devel_api_url', $api);
+    $function = 'devel_test_database_query';
+    $api_url = "http://$api/api/$version/function/$function";
+
+    $name = $this->randomName();
+    $this->drupalGet('devel/test/db_query/' . $name);
+
+    // Check API links.
+    $this->assertLink('devel_test_database_query', 0, 'Link to API exists.');
+    $this->assertLinkByHref($api_url, 0);
+  }
+  
+
+  /**
+   * Tests required files logging.
+   */
+  function testRequiredFiles() {
+    // Enable included files list.
+    variable_set('devel_files_display', TRUE);
+
+    $this->drupalGet('devel/test/included_files');
+    $this->assertText('Included files');
+
+    $path = drupal_get_path('module', 'devel_test');
+    $this->assertText(realpath($path . '/devel_test.module'), 'Devel test module found in included files list.');
+    $this->assertText(realpath($path . '/devel_test.inc'), 'Devel inc file loaded by the page found in included files list.');
+
+    // Disable included files list.
+    variable_set('devel_files_display', FALSE);
+
+    $this->drupalGet('devel/test/included_files');
+    $this->assertNoText('Included files');
+    $this->assertNoText(realpath($path . '/devel_test.module'), 'Devel test module not found when included files list is hidden.');
+  }
+
+  /**
+   * Tests required files logging.
+   */
+  function testPageRedirect() {
+    // Enable included files list.
+    variable_set('devel_redirect_page', TRUE);
+    // Enable query log to ensure that redirection page contains development console.
+    variable_set('devel_query_display', TRUE);
+
+    $target_url = url('devel/test/target_page', array('absolute' => TRUE));
+
+    $this->drupalGet('devel/test/redirect_page');
+
+    // Check that it's a dummy redirection page, not the redirect itself.
+    $this->assertUrl('devel/test/redirect_page');
+    $this->assertTitleContains('Simple page with drupal_goto()');
+    $this->assertText('The user is being redirected to');
+    $this->assertText('DB Query log', 'Query log was shown at redirection page.');
+    $this->assertNoText('This text will not shown.');
+    $this->assertNoText('Target page contents.');
+    $this->assertLink($target_url);
+
+    // Go to link provided by redirection replacement page.
+    $this->clickLink($target_url);
+    $this->assertText('Target page contents.');
+
+    // Disable page redirection.
+    variable_set('devel_redirect_page', FALSE);
+
+    $this->drupalGet('devel/test/redirect_page');
+
+    $this->assertUrl('devel/test/target_page');
+    $this->assertText('Target page contents.');
+  }
+
+  /**
+   * Test that errors are showing when using backtrace.
+   */
+  function testErrorBacktrace() {
+    $name = $this->randomName();
+
+    // Standard Drupal error handler cannot be tested because it will raise a simpletest
+    // exception.
+    //variable_set('devel_error_handler', DEVEL_ERROR_HANDLER_STANDARD);
+    //$this->drupalGet('devel/test/trigger_error/' . $name);
+
+    // Krumo Backtrace.
+    variable_set('devel_error_handler', DEVEL_ERROR_HANDLER_BACKTRACE);
+
+    $this->drupalGet('devel/test/trigger_error/' . $name);
+    $this->assertText('This is a notice ' . $name);
+    $this->assertText('This is a warning ' . $name);
+    $this->assertText('This is a error ' . $name);
+
+    $krumo_names = $this->xpath('//li[contains(@class,"krumo-child")]//a[contains(@class,"krumo-name") and contains(.,"devel_test_trigger_error")]');
+    $this->assertEqual(count($krumo_names), 3, 'Krumo backtrace names are correct.');
+
+    // Krumo Backtrace and drupal standard message.
+    variable_set('devel_error_handler', DEVEL_ERROR_HANDLER_BACKTRACE_AND_MESSAGE);
+
+    $this->drupalGet('devel/test/trigger_error/' . $name);
+
+    $this->assertText('This is a notice ' . $name);
+    $this->assertText('This is a warning ' . $name);
+    $this->assertText('This is a error ' . $name);
+
+    $krumo_names = $this->xpath('//li[contains(@class,"krumo-child")]//a[contains(@class,"krumo-name") and contains(.,"devel_test_trigger_error")]');
+    $this->assertEqual(count($krumo_names), 3, 'Krumo backtrace names are correct.');
+
+    $drupal_messages = $this->xpath('//div[contains(@class,"messages")]//em[contains(@class,"placeholder") and contains(.,"trigger_error")]');
+    $this->assertEqual(count($krumo_names), 3, 'Drupal messages are correct.');
+  }
+}
