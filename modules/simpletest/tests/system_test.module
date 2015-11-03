@@ -127,6 +127,42 @@ function system_test_menu() {
     'type' => MENU_CALLBACK,
   );
 
+  $items['system-test/module-loading'] = array(
+    'title' => 'Test module loading',
+    'page callback' => 'system_test_module_loading',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['system-test/module-loading-inc'] = array(
+    'title' => 'Test module loading for a separate file inclusion',
+    'page callback' => 'system_test_module_loading_inc',
+    'file' => 'system_test.inc',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['system-test/module-loading-implements-unexisted'] = array(
+    'title' => 'Test that module_implements() of unexisted hook',
+    'page callback' => 'system_test_module_loading_implements_unexisted',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['system-test/module-loading-implements'] = array(
+    'title' => 'Test module loading by module_implements()',
+    'page callback' => 'system_test_module_loading_implements',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['system-test/module-loading-exists'] = array(
+    'title' => 'Test module loading by module_exists()',
+    'page callback' => 'system_test_module_loading_exists',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
   return $items;
 }
 
@@ -478,4 +514,45 @@ function system_test_request_destination() {
   // No need to render the whole page, we are just interested in this bit of
   // information.
   exit;
+}
+
+/**
+ * Page callback to print list of included and required files.
+ */
+function system_test_module_loading() {
+  $files = array_merge(get_included_files(), get_required_files());
+  return '<pre>' . print_r($files, TRUE) . '</pre>';
+}
+
+/**
+ * Page callback to print list of included and required files after invoking
+ * module_implements().
+ */
+function system_test_module_loading_implements() {
+  foreach (module_implements('menu') as $module) {
+    // Do nothing, just check.
+  }
+  return system_test_module_loading();
+}
+
+/**
+ * Page callback to check that module_implements() will not load module when
+ * it doesn't implements the hook.
+ */
+function system_test_module_loading_implements_unexisted() {
+  foreach (module_implements('testhook') as $module) {
+    // Do nothing, just check.
+  }
+  return system_test_module_loading();
+}
+
+/**
+ * Page callback to print list of included and required files after invoking
+ * module_exists().
+ */
+function system_test_module_loading_exists() {
+  if (module_exists('system_another_test')) {
+    // Do nothing, just check.
+  }
+  return system_test_module_loading();
 }

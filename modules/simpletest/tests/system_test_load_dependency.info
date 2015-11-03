@@ -1,0 +1,6 @@
+name = System test load dependency
+description = Dependency module for system dynamic module testing.
+package = Testing
+version = VERSION
+core = 6.x
+hidden = TRUE

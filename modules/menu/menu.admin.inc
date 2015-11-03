@@ -9,6 +9,7 @@
  * Menu callback which shows an overview page of all the custom menus and their descriptions.
  */
 function menu_overview_page() {
+  drupal_load('module', 'filter');
   $result = db_query("SELECT * FROM {menu_custom} ORDER BY title");
   $content = array();
   while ($menu = db_fetch_array($result)) {
@@ -104,7 +105,7 @@ function _menu_overview_tree_form($tree) {
         $operations['delete'] = l(t('delete'), 'admin/build/menu/item/'. $item['mlid'] .'/delete');
       }
       // Set the reset column.
-      elseif ($item['module'] == 'system' && $item['customized']) {
+      elseif ($item['is_system'] && $item['customized']) {
         $operations['reset'] = l(t('reset'), 'admin/build/menu/item/'. $item['mlid'] .'/reset');
       }
 
@@ -483,7 +484,7 @@ function menu_delete_menu_confirm_submit($form, &$form_state) {
     return;
   }
   // Reset all the menu links defined by the system via hook_menu.
-  $result = db_query("SELECT * FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.menu_name = '%s' AND ml.module = 'system' ORDER BY m.number_parts ASC", $menu['menu_name']);
+  $result = db_query("SELECT * FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.menu_name = '%s' AND ml.is_system = 1 ORDER BY m.number_parts ASC", $menu['menu_name']);
   while ($item = db_fetch_array($result)) {
     menu_reset_item($item);
   }
@@ -536,7 +537,7 @@ function menu_edit_menu_submit($form, &$form_state) {
     $link['link_path'] = $path . $menu['menu_name'];
     $link['router_path'] = $path .'%';
     $link['module'] = 'menu';
-    $link['plid'] = db_result(db_query("SELECT mlid FROM {menu_links} WHERE link_path = '%s' AND module = '%s'", 'admin/build/menu', 'system'));
+    $link['plid'] = db_result(db_query("SELECT mlid FROM {menu_links} WHERE link_path = '%s' AND is_system = 1", 'admin/build/menu'));
     menu_link_save($link);
     db_query("INSERT INTO {menu_custom} (menu_name, title, description) VALUES ('%s', '%s', '%s')", $menu['menu_name'], $menu['title'], $menu['description']);
   }
@@ -561,7 +562,7 @@ function menu_edit_menu_submit($form, &$form_state) {
 function menu_item_delete_page($item) {
   // Links defined via hook_menu may not be deleted. Updated items are an
   // exception, as they can be broken.
-  if ($item['module'] == 'system' && !$item['updated']) {
+  if ($item['is_system'] && !$item['updated']) {
     drupal_access_denied();
     return;
   }

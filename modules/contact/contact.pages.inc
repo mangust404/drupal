@@ -36,6 +36,7 @@ function contact_mail_page() {
     }
   }
 
+  drupal_load('module', 'filter');
   if (count($categories) > 0) {
     $form['#token'] = $user->uid ? $user->name . $user->mail : '';
     $form['contact_information'] = array('#value' => filter_xss_admin(variable_get('contact_form_information', t('You can leave a message using the contact form below.'))));

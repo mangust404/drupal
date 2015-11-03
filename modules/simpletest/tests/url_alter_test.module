@@ -33,7 +33,7 @@ function url_alter_test_url_inbound_alter(&$path, $original_path, $path_language
 /*  if (!current_path() && !empty($_GET['q'])) {
     drupal_set_message("\$_GET['q'] is non-empty with an empty request path.");
   }*/
-
+  drupal_load('module', 'user');
   // Rewrite user/username to user/uid.
   if (preg_match('!^user/([^/]+)(/.*)?!', $path, $matches)) {
     if ($account = user_load(array('name' => $matches[1]))) {

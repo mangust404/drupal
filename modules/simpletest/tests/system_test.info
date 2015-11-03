@@ -4,4 +4,5 @@ package = Testing
 version = VERSION
 core = 6.x
 files[] = system_test.module
+dependencies[] = system_test_load_dependency
 hidden = TRUE

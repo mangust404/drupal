@@ -293,6 +293,7 @@ function drupal_rebuild_theme_registry() {
 function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
   $result = array();
   $function = $name .'_theme';
+
   if (function_exists($function)) {
     $result = $function($cache, $type, $theme, $path);
 
@@ -359,6 +360,8 @@ function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
       // Check for default _preprocess_ functions. Ensure arrayness.
       if (!isset($info['preprocess functions']) || !is_array($info['preprocess functions'])) {
         $info['preprocess functions'] = array();
+        // Also store modules where preprocess functions are defined.
+        $info['preprocess modules'] = array();
         $prefixes = array();
         if ($type == 'module') {
           // Default preprocessor prefix.
@@ -380,16 +383,27 @@ function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
         }
 
         foreach ($prefixes as $prefix) {
+          $exists = FALSE;
+
           if (function_exists($prefix .'_preprocess')) {
             $info['preprocess functions'][] = $prefix .'_preprocess';
+            $exists = TRUE;
           }
 
           if (function_exists($prefix .'_preprocess_'. $hook)) {
             $info['preprocess functions'][] = $prefix .'_preprocess_'. $hook;
+            $exists = TRUE;
           }
 
           if (!empty($info['original hook']) && function_exists($prefix .'_preprocess_'. $info['original hook'])) {
             $info['preprocess functions'][] = $prefix .'_preprocess_'. $info['original hook'];
+            $exists = TRUE;
+          }
+
+          if ($exists && $type == 'module' && $prefix != 'template') {
+            // Module define preprocess function and should be loaded on
+            // preprocess functions executing.
+            $info['preprocess modules'][] = $prefix;
           }
         }
       }
@@ -401,11 +415,14 @@ function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
       }
       elseif (isset($cache[$hook]['preprocess functions']) && is_array($cache[$hook]['preprocess functions'])) {
         $info['preprocess functions'] = array_merge($cache[$hook]['preprocess functions'], $info['preprocess functions']);
+        $info['preprocess modules'] = array_unique(array_merge($cache[$hook]['preprocess modules'], $info['preprocess modules']));
       }
       elseif (isset($info['original hook']) && isset($cache[$info['original hook']]['preprocess functions']) && is_array($cache[$info['original hook']]['preprocess functions'])) {
         $info['preprocess functions'] = array_merge($cache[$info['original hook']]['preprocess functions'], $info['preprocess functions']);
+        $info['preprocess modules'] = array_unique(array_merge($cache[$info['original hook']]['preprocess modules'], $info['preprocess modules']));
       }
       $result[$hook]['preprocess functions'] = $info['preprocess functions'];
+      $result[$hook]['preprocess modules'] = array_unique($info['preprocess modules']);
     }
 
     // Merge the newly created theme hooks into the existing cache.
@@ -419,15 +436,25 @@ function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
       if (!empty($info['template']) && empty($result[$hook])) {
         if (!isset($info['preprocess functions'])) {
           $cache[$hook]['preprocess functions'] = array();
+          $cache[$hook]['preprocess modules'] = array();
         }
+
+        $exists = FALSE;
         if (function_exists($name .'_preprocess')) {
           $cache[$hook]['preprocess functions'][] = $name .'_preprocess';
+          $exists = TRUE;
         }
         if (function_exists($name .'_preprocess_'. $hook)) {
           $cache[$hook]['preprocess functions'][] = $name .'_preprocess_'. $hook;
+          $exists = TRUE;
         }
         // Ensure uniqueness.
         $cache[$hook]['preprocess functions'] = array_unique($cache[$hook]['preprocess functions']);
+
+        // Preprocess modules list also should be unique.
+        if ($exists && $type == 'module' && !in_array($name, $cache[$hook]['preprocess modules'])) {
+          $cache[$hook]['preprocess modules'][] = $name;
+        }
       }
     }
   }
@@ -445,6 +472,9 @@ function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
  *   The name of the theme engine.
  */
 function _theme_build_registry($theme, $base_theme, $theme_engine) {
+  // All the modules should be loaded to access all the available functions.
+  module_load_all();
+
   $cache = array();
   // First, process the theme hooks advertised by modules. This will
   // serve as the basic registry.
@@ -509,6 +539,7 @@ function list_themes($refresh = FALSE) {
     }
     else {
       // Scan the installation when the database should not be read.
+      drupal_load('module', 'system');
       $themes = _system_theme_data();
     }
 
@@ -539,6 +570,26 @@ function list_themes($refresh = FALSE) {
   }
 
   return $list;
+}
+
+
+/**
+ * Get a list of available regions from a specified theme.
+ *
+ * @param $theme_key
+ *   The name of a theme.
+ * @return
+ *   An array of regions in the form $region['name'] = 'description'.
+ */
+function system_region_list($theme_key) {
+  $list = &drupal_static(__FUNCTION__, array());
+
+  if (!array_key_exists($theme_key, $list)) {
+    $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = 'theme' AND name = '%s'", $theme_key)));
+    $list[$theme_key] = array_map('t', $info['regions']);
+  }
+
+  return $list[$theme_key];
 }
 
 /**
@@ -758,6 +809,12 @@ function theme() {
     }
 
     if (isset($info['preprocess functions']) && is_array($info['preprocess functions'])) {
+      if (!empty($info['preprocess modules'])) {
+        // Load all the modules where preprocess functions are defined.
+        foreach ($info['preprocess modules'] as $module) {
+          drupal_load('module', $module);
+        }
+      }
       // This construct ensures that we can keep a reference through
       // call_user_func_array.
       $args = array(&$variables, $hook);
@@ -1814,6 +1871,7 @@ function theme_closure($main = 0) {
 function theme_blocks($region) {
   $output = '';
 
+  drupal_load('module', 'block');
   if ($list = block_list($region)) {
     foreach ($list as $key => $block) {
       // $key == <i>module</i>_<i>delta</i>

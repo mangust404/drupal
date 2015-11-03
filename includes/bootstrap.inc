@@ -897,6 +897,16 @@ function drupal_load($type, $name) {
 
   $filename = drupal_get_filename($type, $name);
 
+  // Module dependency check is available only when module system is initialized.
+  // This could happen on a different types of bootstrap level so check the
+  // function persistence instead of bootstrap.
+  if ($type == 'module' && function_exists('module_get_dependencies') && function_exists('cache_get')) {
+    // For a module also load module dependencies.
+    foreach (module_get_dependencies($name) as $dependency) {
+      drupal_load('module', $dependency);
+    }
+  }
+
   if ($filename) {
     include_once "./$filename";
     $files[$type][$name] = TRUE;

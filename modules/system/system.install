@@ -837,6 +837,10 @@ function system_schema() {
       'file' => array(
         'description' => 'The file to include for this element, usually the page callback function lives in this file.',
         'type' => 'text',
+        'size' => 'medium'),
+      'module' => array(
+        'description' => 'The module to include for this element, by default module equals to provider of the menu router item.',
+        'type' => 'text',
         'size' => 'medium')
       ),
     'indexes' => array(
@@ -992,6 +996,12 @@ function system_schema() {
         'default' => 0),
       'updated' => array(
         'description' => 'Flag that indicates that this link was generated during the update from Drupal 5.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'small'),
+      'is_system' => array(
+        'description' => 'Flag to distinguish menu links that was generated automatically from menu_router item instead of "module=system".',
         'type' => 'int',
         'not null' => TRUE,
         'default' => 0,
@@ -2741,6 +2751,11 @@ function system_update_6055() {
 }
 
 /**
+ * @} End of "defgroup updates-6.x-extra".
+ * The next series of updates should start at 7000.
+ */
+
+/**
  * Set default null for node.vid.
  */
 function system_update_6500() {
@@ -2754,7 +2769,18 @@ function system_update_6500() {
 }
 
 /**
- * @} End of "defgroup updates-6.x-extra".
- * The next series of updates should start at 7000.
+ * Add a "module" field to the {menu_router}.
  */
+function system_update_6501() {
+  $ret = array();
+  $schema = system_schema();
+  db_add_field($ret, 'menu_router', 'module', $schema['menu_router']['fields']['module']);
+  return $ret;  
+}
 
+function system_update_6502() {
+  $ret = array();
+  $schema = system_schema();
+  db_add_field($ret, 'menu_links', 'is_system', $schema['menu_links']['fields']['is_system']);
+  return $ret;  
+}

@@ -702,6 +702,103 @@ class ModuleRequiredTestCase extends ModuleTestCase {
   }
 }
 
+/**
+ * Test dynamic modules loading capabilities.
+ */
+class DynamicModuleLoadingTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Dynamic modules loading',
+      'description' => 'Tests that module_load_all() are not called on a certain page call.',
+      'group' => 'Module',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('system_test', 'system_another_test');
+  }
+
+  /**
+   * Test that only required modules are loaded.
+   */
+  function testModuleLoading() {
+    $current_module_path = realpath(drupal_get_path('module', 'system_test') . '/system_test.module');
+    $another_module_path = realpath(drupal_get_path('module', 'system_another_test') . '/system_another_test.module');
+
+    // At the first call all the modules may be included by "module_implements".
+    $this->drupalGet('system-test/module-loading');
+    // Called menu module should be loaded.
+    $this->assertText($current_module_path);
+
+    // The second call should not load unnecessary module.
+    $this->drupalGet('system-test/module-loading');
+    $this->assertNoText($another_module_path);
+    $this->assertText($current_module_path);
+  }
+
+  /**
+   * Test that module is loaded for a separate file menu call.
+   */
+  function testModuleSeparateLoading() {
+    $current_module_path = realpath(drupal_get_path('module', 'system_test') . '/system_test.module');
+    $include_path = realpath(drupal_get_path('module', 'system_test') . '/system_test.inc');
+    
+    $this->drupalGet('system-test/module-loading-inc');
+    $this->assertText($current_module_path);
+    $this->assertText($include_path);
+    $this->assertTitleContains('Test module loading for a separate file inclusion');
+  }
+
+  /**
+   * Test that module is loaded when calling module_implements() and
+   * module is implementing that function.
+   */
+  function testModuleLoadingByModuleImplements() {
+    $current_module_path = realpath(drupal_get_path('module', 'system_test') . '/system_test.module');
+    $another_module_path = realpath(drupal_get_path('module', 'system_another_test') . '/system_another_test.module');
+
+    // First call should load all modules to check implementation.
+    $this->drupalGet('system-test/module-loading-implements');
+    
+    // Second call should load all modules that contains implementation of the hook_menu.
+    $this->drupalGet('system-test/module-loading-implements');
+    $this->assertText($another_module_path);
+
+    // Check another hook by module_implements. It should be cached.
+    $this->drupalGet('system-test/module-loading-implements-unexisted');
+    
+    // Second module doesn't implements hook_testhook() and should not be loaded.
+    $this->drupalGet('system-test/module-loading-implements-unexisted');
+    $this->assertNoText($another_module_path);
+  }
+
+  /**
+   * Test that module is loaded for a separate file menu call.
+   */
+  function testModuleLoadingByModuleExists() {
+    $another_module_path = realpath(drupal_get_path('module', 'system_another_test') . '/system_another_test.module');
+
+    // Check for module_exists() should load target module.
+    $this->drupalGet('system-test/module-loading-exists');
+    $this->assertText($another_module_path);
+  }
+
+  /**
+   * Test that module dependency is also loaded.
+   */
+  function testModuleDependencyLoad() {
+    $dependency_path = realpath(drupal_get_path('module', 'system_test_load_dependency') . '/system_test_load_dependency.module');
+
+    // At the first call all the modules may be included by "module_implements".
+    $this->drupalGet('system-test/module-loading');
+
+    // The second call should not load unnecessary module.
+    $this->drupalGet('system-test/module-loading');
+
+    $this->assertText($dependency_path);
+  }
+}
+
 // No IP address blocking in D6.
 //class IPAddressBlockingTestCase extends DrupalWebTestCase {
 //  protected $blocking_user;

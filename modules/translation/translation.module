@@ -231,6 +231,8 @@ function translation_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         $node->language = $_GET['language'];
         $node->translation_source = $translation_source;
         $node->title = $translation_source->title;
+        
+        drupal_load('module', 'filter');
         // If user has no access to the filter used for the body, Drupal core
         // does not let the edit form to appear, so we should avoid exposing
         // the source text here too.

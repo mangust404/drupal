@@ -257,6 +257,7 @@ function profile_view_field($user, $field) {
   if (isset($user->{$field->name}) && $value = $user->{$field->name}) {
     switch ($field->type) {
       case 'textarea':
+        drupal_load('module', 'filter');
         return check_markup($value);
       case 'textfield':
       case 'selection':

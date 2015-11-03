@@ -1211,7 +1211,7 @@ function t($string, $args = array(), $langcode = NULL, $context = '') {
     $string = $custom_strings[$langcode][$context][$string];
   }
   // Translate with locale module if enabled.
-  elseif (function_exists('locale') && $langcode != 'en') {
+  elseif (module_exists('locale') && function_exists('locale') && $langcode != 'en') {
     $string = locale($string, $langcode);
   }
   if (empty($args)) {
@@ -1418,6 +1418,7 @@ function drupal_strip_dangerous_protocols($uri) {
  * Prepare a URL for use in an HTML attribute. Strips harmful protocols.
  */
 function check_url($uri) {
+  drupal_load('module', 'filter');
   return filter_xss_bad_protocol($uri, FALSE);
 }
 
@@ -4489,8 +4490,17 @@ function _drupal_bootstrap_full() {
     ini_set('error_log', file_directory_path() . '/error.log');
   }
 
-  // Load all enabled modules
-  module_load_all();
+  // At this step, default D6 and D7 cores includes all enabled modules.
+  // It's a valuable hit to the performance when you have a lot of modules
+  // and actually not necessary so it can be skipped.
+  // If a module invokes some methods from another module it should call one of
+  // module_load(), module_exists() or module_implements('hook') and all necesarry
+  // modules will be loaded on the fly.
+  //module_load_all();
+
+  // Instead of loading all modules just refreshing enabled module list.
+  module_list(TRUE, FALSE);
+
   // Ensure mt_rand is reseeded, to prevent random values from one page load
   // being exploited to predict random values in subsequent page loads.
   $seed = unpack("L", drupal_random_bytes(4));

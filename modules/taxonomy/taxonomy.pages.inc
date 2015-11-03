@@ -89,6 +89,7 @@ function theme_taxonomy_term_page($tids, $result) {
   drupal_add_css(drupal_get_path('module', 'taxonomy') .'/taxonomy.css');
 
   $output = '';
+  drupal_load('module', 'filter');
 
   // Only display the description if we have a single term, to avoid clutter and confusion.
   if (count($tids) == 1) {

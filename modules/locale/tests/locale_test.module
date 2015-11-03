@@ -139,6 +139,7 @@ function locale_test_language_provider($languages) {
  * @return array
  */
 function locale_test_plural_format_page() {
+  drupal_load('module', 'locale');
   $tests = _locale_test_plural_format_tests();
   $result = array();
   foreach ($tests as $test) {

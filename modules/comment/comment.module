@@ -627,6 +627,7 @@ function comment_nodeapi(&$node, $op, $arg = 0) {
     case 'update index':
       $text = '';
       $comments = db_query('SELECT c.subject, c.comment, c.format FROM {comments} c LEFT JOIN {node} n ON c.nid = n.nid WHERE c.nid = %d AND c.status = %d AND n.comment > %d', $node->nid, COMMENT_PUBLISHED, COMMENT_NODE_DISABLED);
+      drupal_load('module', 'filter');
       while ($comment = db_fetch_object($comments)) {
         $text .= '<h2>'. check_plain($comment->subject) .'</h2>'. check_markup($comment->comment, $comment->format, FALSE);
       }
@@ -1385,6 +1386,7 @@ function comment_form(&$form_state, $edit, $title = NULL) {
     $default = '';
   }
 
+  drupal_load('module', 'filter');
   $form['comment_filter']['comment'] = array(
     '#type' => 'textarea',
     '#title' => t('Comment'),
@@ -1543,6 +1545,7 @@ function _comment_form_submit(&$comment_values) {
   // Validate the comment's subject. If not specified, extract
   // one from the comment's body.
   if (trim($comment_values['subject']) == '') {
+    drupal_load('module', 'filter');
     // The body may be in any format, so we:
     // 1) Filter it into HTML
     // 2) Strip out all HTML tags
@@ -1603,6 +1606,7 @@ function theme_comment_view($comment, $node, $links = array(), $visible = TRUE) 
 
   $output .= "<a id=\"comment-$comment->cid\"></a>\n";
 
+  drupal_load('module', 'filter');
   // Switch to folded/unfolded view of the comment
   if ($visible) {
     $comment->comment = check_markup($comment->comment, $comment->format, FALSE);

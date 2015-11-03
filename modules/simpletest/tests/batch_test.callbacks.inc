@@ -10,6 +10,7 @@
  * Simple batch operation.
  */
 function _batch_test_callback_1($id, $sleep, &$context) {
+  drupal_load('module', 'batch_test');
   // No-op, but ensure the batch take a couple iterations.
   // Batch needs time to run for the test, so sleep a bit.
   usleep($sleep);
@@ -23,6 +24,7 @@ function _batch_test_callback_1($id, $sleep, &$context) {
  * Multistep batch operation.
  */
 function _batch_test_callback_2($start, $total, $sleep, &$context) {
+  drupal_load('module', 'batch_test');
   // Initialize context with progress information.
   if (!isset($context['sandbox']['current'])) {
     $context['sandbox']['current'] = $start;
@@ -56,6 +58,7 @@ function _batch_test_callback_2($start, $total, $sleep, &$context) {
  * Simple batch operation.
  */
 function _batch_test_callback_5($id, $sleep, &$context) {
+  drupal_load('module', 'batch_test');
   // No-op, but ensure the batch take a couple iterations.
   // Batch needs time to run for the test, so sleep a bit.
   usleep($sleep);
@@ -71,6 +74,7 @@ function _batch_test_callback_5($id, $sleep, &$context) {
  * Batch operation setting up its own batch.
  */
 function _batch_test_nested_batch_callback() {
+  drupal_load('module', 'batch_test');
   batch_test_stack('setting up batch 2');
   batch_set(_batch_test_batch_2());
 }

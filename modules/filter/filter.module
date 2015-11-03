@@ -326,7 +326,7 @@ function filter_formats($index = NULL) {
 function filter_list_all() {
   $filters = array();
 
-  foreach (module_list() as $module) {
+  foreach (module_implements('filter') as $module) {
     $list = module_invoke($module, 'filter', 'list');
     if (isset($list) && is_array($list)) {
       foreach ($list as $delta => $name) {

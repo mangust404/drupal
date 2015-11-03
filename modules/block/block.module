@@ -200,10 +200,14 @@ function block_block($op = 'list', $delta = 0, $edit = array()) {
       return $blocks;
 
     case 'configure':
+      // Load filter module because of using of filter constants.
+      drupal_load('module', 'filter');
+
       $box = array('format' => FILTER_FORMAT_DEFAULT);
       if ($delta) {
         $box = block_box_get($delta);
       }
+      drupal_load('module', 'filter');
       if (filter_access($box['format'])) {
         return block_box_form($box);
       } else {
@@ -216,6 +220,7 @@ function block_block($op = 'list', $delta = 0, $edit = array()) {
       break;
 
     case 'view':
+      drupal_load('module', 'filter');
       $block = db_fetch_object(db_query('SELECT body, format FROM {boxes} WHERE bid = %d', $delta));
       $data['content'] = check_markup($block->body, $block->format, FALSE);
       return $data;
@@ -250,7 +255,7 @@ function _block_rehash($theme = NULL) {
   // Valid region names for the theme.
   $regions = system_region_list($theme);
 
-  foreach (module_list() as $module) {
+  foreach (module_implements('block') as $module) {
     $module_blocks = module_invoke($module, 'block', 'list');
     if ($module_blocks) {
       foreach ($module_blocks as $delta => $block) {
@@ -372,6 +377,7 @@ function block_box_form($edit = array()) {
     '#description' => t('The content of the block as shown to the user.'),
     '#weight' => -17,
   );
+  drupal_load('module', 'filter');
   if (!isset($edit['format'])) {
     $edit['format'] = FILTER_FORMAT_DEFAULT;
   }
@@ -394,6 +400,7 @@ function block_box_form($edit = array()) {
  *   Always returns TRUE.
  */
 function block_box_save($edit, $delta) {
+  drupal_load('module', 'filter');
   if (!filter_access($edit['format'])) {
     $edit['format'] = FILTER_FORMAT_DEFAULT;
   }

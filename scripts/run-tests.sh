@@ -36,6 +36,7 @@ else {
 
 // Bootstrap to perform initial validation or other operations.
 drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
+
 ob_end_flush();
 
 if (!module_exists('simpletest')) {
@@ -398,6 +399,7 @@ function simpletest_script_run_one_test($test_id, $test_class) {
 
   // Drupal 6.
   require_once drupal_get_path('module', 'simpletest') . '/drupal_web_test_case.php';
+  drupal_load('module', 'simpletest');
   $classes = simpletest_test_get_all_classes();
 
   if (strpos($test_class, '::') !== FALSE) {

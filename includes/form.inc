@@ -2917,6 +2917,7 @@ function theme_form_element($element, $value) {
 
   if (!empty($element['#title'])) {
     $title = $element['#title'];
+    drupal_load('module', 'filter');
     if (!empty($element['#id'])) {
       $output .= ' <label for="'. $element['#id'] .'">'. $t('!title: !required', array('!title' => filter_xss_admin($title), '!required' => $required)) ."</label>\n";
     }

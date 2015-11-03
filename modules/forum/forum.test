@@ -294,7 +294,7 @@ class ForumTestCase extends DrupalWebTestCase {
     $this->assertText(t('The block settings have been updated.'), '[New forum topics] Forum block was enabled');
 
     // Retrieve forum menu id.
-    $mlid = db_result(db_query_range("SELECT mlid FROM {menu_links} WHERE link_path = 'forum' AND menu_name = 'navigation' AND module = 'system' ORDER BY mlid ASC", 0, 1));
+    $mlid = db_result(db_query_range("SELECT mlid FROM {menu_links} WHERE link_path = 'forum' AND menu_name = 'navigation' AND is_system = 1 ORDER BY mlid ASC", 0, 1));
 
     // Add forum to navigation menu.
     $edit = array(

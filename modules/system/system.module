@@ -753,7 +753,7 @@ function system_block($op = 'list', $delta = 0, $edit = NULL) {
 function system_admin_menu_block($item) {
   $content = array();
   if (!isset($item['mlid'])) {
-    $item += db_fetch_array(db_query("SELECT mlid, menu_name FROM {menu_links} ml WHERE ml.router_path = '%s' AND module = 'system'", $item['path']));
+    $item += db_fetch_array(db_query("SELECT mlid, menu_name FROM {menu_links} ml WHERE ml.router_path = '%s' AND is_system = 1", $item['path']));
   }
   $result = db_query("
     SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
@@ -1289,25 +1289,6 @@ function system_find_base_theme($themes, $key, $used_keys = array()) {
 }
 
 /**
- * Get a list of available regions from a specified theme.
- *
- * @param $theme_key
- *   The name of a theme.
- * @return
- *   An array of regions in the form $region['name'] = 'description'.
- */
-function system_region_list($theme_key) {
-  $list = &drupal_static(__FUNCTION__, array());
-
-  if (!array_key_exists($theme_key, $list)) {
-    $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = 'theme' AND name = '%s'", $theme_key)));
-    $list[$theme_key] = array_map('t', $info['regions']);
-  }
-
-  return $list[$theme_key];
-}
-
-/**
  * Get the name of the default region for a given theme.
  *
  * @param $theme
@@ -1537,7 +1518,7 @@ function system_get_module_admin_tasks($module) {
   if (!isset($items)) {
     $result = db_query("
        SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, ml.*
-       FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.link_path LIKE 'admin/%' AND hidden >= 0 AND module = 'system' AND m.number_parts > 2");
+       FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.link_path LIKE 'admin/%' AND hidden >= 0 AND ml.module = 'system' AND m.number_parts > 2");
     $items = array();
     while ($item = db_fetch_array($result)) {
       _menu_link_translate($item);
@@ -1680,6 +1661,7 @@ function system_actions_manage() {
   );
   $sql = 'SELECT * FROM {actions}';
   $result = pager_query($sql . tablesort_sql($header), 50);
+  drupal_load('module', 'filter');
   while ($action = db_fetch_object($result)) {
     $row[] = array(
       array('data' => $action->type),
@@ -2090,6 +2072,7 @@ function system_mail($key, &$message, $params) {
     );
   }
   $subject = strtr($context['subject'], $variables);
+  drupal_load('module', 'filter');
   $body = strtr(filter_xss_admin($context['message']), $variables);
   $message['subject'] .= str_replace(array("\r", "\n"), '', $subject);
   $message['body'][] = drupal_html_to_text($body);
@@ -2115,6 +2098,8 @@ function system_message_action_submit($form, $form_state) {
  * A configurable Drupal action. Sends a message to the current user's screen.
  */
 function system_message_action(&$object, $context = array()) {
+  drupal_load('module', 'filter');
+  
   global $user;
   $variables = array(
     '%site_name' => variable_get('site_name', 'Drupal'),
@@ -2154,6 +2139,7 @@ function system_message_action(&$object, $context = array()) {
   }
 
   if (isset($node) && is_object($node)) {
+    drupal_load('module', 'filter');
     $variables = array_merge($variables, array(
       '%uid' => $node->uid,
       '%node_url' => url('node/'. $node->nid, array('absolute' => TRUE)),
@@ -2350,6 +2336,8 @@ function system_rebuild_module_data($reset = FALSE) {
     system_update_files_database($modules, 'module');
     $modules = _module_build_dependencies($modules);
     $modules_cache = $modules;
+    // Rebuild modules dependencies.
+    module_get_dependencies(NULL, $modules);
   }
   return $modules_cache;
 }

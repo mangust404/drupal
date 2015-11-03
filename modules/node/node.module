@@ -59,11 +59,13 @@ function node_help($path, $arg) {
     case 'node/%/edit':
       $node = node_load($arg[1]);
       $type = node_get_types('type', $node->type);
+      drupal_load('module', 'filter');
       return (!empty($type->help) ? '<p>'. filter_xss_admin($type->help) .'</p>' : '');
   }
 
   if ($arg[0] == 'node' && $arg[1] == 'add' && $arg[2]) {
     $type = node_get_types('type', str_replace('-', '_', $arg[2]));
+    drupal_load('module', 'filter');
     return (!empty($type->help) ? '<p>'. filter_xss_admin($type->help) .'</p>' : '');
   }
 }
@@ -327,7 +329,7 @@ function node_teaser($body, $format = NULL, $size = NULL) {
   // We check for the presence of the PHP evaluator filter in the current
   // format. If the body contains PHP code, we do not split it up to prevent
   // parse errors.
-  if (isset($format)) {
+  if (isset($format) && module_exists('filter')) {
     $filters = filter_list_format($format);
     if (isset($filters['php/0']) && strpos($body, '<?') !== FALSE) {
       return $body;
@@ -1079,6 +1081,7 @@ function node_prepare($node, $teaser = FALSE) {
   // array and set the read more flag if appropriate.
   $node->readmore = $node->teaser != $node->body;
 
+  drupal_load('module', 'filter');
   if ($teaser == FALSE) {
     $node->body = check_markup($node->body, $node->format, FALSE);
   }
@@ -2083,6 +2086,7 @@ function node_access($op, $node, $account = NULL) {
   if (empty($account)) {
     $account = $user;
   }
+  drupal_load('module', 'filter');
   // If the node is in a restricted format, disallow editing.
   if ($op == 'update' && !filter_access($node->format)) {
     return FALSE;

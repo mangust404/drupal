@@ -1,0 +1,6 @@
+name = "Additinal system test module"
+description = "Support module for testing modules loading."
+package = Testing
+version = VERSION
+core = 6.x
+hidden = TRUE

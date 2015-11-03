@@ -234,6 +234,7 @@ function theme_trigger_display($element) {
   $header = array();
   $rows = array();
   if (count($element['assigned']['#value'])) {
+    drupal_load('module', 'filter');
     $header = array(array('data' => t('Name')), array('data' => t('Operation')));
     $rows = array();
     foreach ($element['assigned']['#value'] as $aid => $info) {

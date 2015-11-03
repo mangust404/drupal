@@ -231,6 +231,62 @@ function module_rebuild_cache() {
 }
 
 /**
+ * Get module dependencies list.
+ * Data is returned from the cache (fast).
+ *
+ * @param $module
+ *   Module name for which you want to get dependencies list.
+ *
+ * @param $modules
+ *   Module registry for rebuilding dependencies cache.
+ *   Optional. Internal use only.
+ *
+ * @return
+ *   An array of module dependencies.
+ * @see drupal_load()
+ */
+function module_get_dependencies($module = NULL, $modules = NULL) {
+  $dependencies = &drupal_static(__FUNCTION__, NULL);
+
+  if (is_array($modules)) {
+    // Build shortened dependencies index from modules registry for enabled modules.
+    $dependencies = array();
+    foreach ($modules as $name => $_module) {
+      if ($_module->status && !empty($_module->info['dependencies'])) {
+        $dependencies[$name] = $_module->info['dependencies'];
+      }
+    }
+    cache_set('module_dependencies', $dependencies, 'cache');
+  }
+
+  if (!is_array($dependencies)) {
+    $dependencies = array();
+    $data = cache_get('module_dependencies', 'cache');
+    if (!empty($data)) {
+      $dependencies = $data->data;
+    }
+    else {
+      // Cache was emptied for the unknown reason, probably cache clear button.
+      // Fetch dependencies from database.
+      $dependencies = array();
+      $result = db_query("SELECT name, info FROM {system} WHERE type = 'module' AND status > 0");
+      while ($data = db_fetch_object($result)) {
+        $info = unserialize($data->info);
+        if (!empty($info['dependencies'])) {
+          $dependencies[$data->name] = $info['dependencies'];
+        }
+      }
+      cache_set('module_dependencies', $dependencies, 'cache');
+    }
+  }
+
+  if (!empty($module) && isset($dependencies[$module])) {
+    return $dependencies[$module];
+  }
+  return array();
+}
+
+/**
  * Determines which modules require and are required by each module. Backport from D7
  *
  * @param $files
@@ -272,8 +328,14 @@ function _module_build_dependencies($files) {
  *   TRUE if the module is both installed and enabled.
  */
 function module_exists($module) {
-  $list = module_list();
-  return array_key_exists($module, $list);
+  $list = module_list(FALSE, FALSE);
+  $result = array_key_exists($module, $list);
+  if ($result) {
+    // Usually some modules want to check that module exists if they want
+    // use some functions from it. So load that module if it's exists.
+    drupal_load('module', $module);
+  }
+  return $result;
 }
 
 /**
@@ -333,7 +395,7 @@ function module_load_include($type, $module, $name = NULL) {
  * the system table.
  */
 function module_load_all_includes($type, $name = NULL) {
-  $modules = module_list();
+  $modules = module_list(FALSE, FALSE);
   foreach ($modules as $module) {
     module_load_include($type, $module, $name);
   }
@@ -598,6 +660,7 @@ function module_disable($module_list, $disable_dependents = TRUE) {
  *   implemented in that module.
  */
 function module_hook($module, $hook) {
+  drupal_load('module', $module);
   $function = $module . '_' . $hook;
   if (function_exists($function)) {
     return TRUE;
@@ -670,7 +733,21 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
     }
   }
 
+  // All hooks from .install files should be processed in a "special" way.
+  $installation_hooks = array('install', 'schema', 'requirements');
+
   if (!isset($implementations[$hook])) {
+    if (in_array($hook, $installation_hooks)) {
+      // Hooks from installation file.
+      module_load_all_includes('install');
+    }
+    // In scripts like update.php the bootstrap is not fully loaded and database
+    // functions are unavailable so module_load_all() cannot be loaded.
+    else if (function_exists('db_query')) {
+      // Include all enabled modules to seek for the hook.
+      module_load_all();
+    }
+
     // The hook is not cached, so ensure that whether or not it has
     // implementations, that the cache is updated at the end of the request.
     $implementations['#write_cache'] = TRUE;
@@ -693,6 +770,15 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
   }
   else {
     foreach ($implementations[$hook] as $module => $group) {
+      if (in_array($hook, $installation_hooks)) {
+        // Hook from the installation file.
+        drupal_load('install', $module);
+      }
+      else {
+        // All other hooks. Load the module on the fly.
+        drupal_load('module', $module);
+      }
+
       // If this hook implementation is stored in a lazy-loaded file, so include
       // that file first.
       if ($group) {

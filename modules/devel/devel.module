@@ -1339,7 +1339,13 @@ function devel_cache_clear() {
  * Menu callback; Pretty print of cache entry.
  */
 function devel_cache_get($bin, $cid) {
-  return dprint_r(cache_get($cid, $bin), TRUE);
+  $data = cache_get($cid, $bin);
+  if (isset($data->created)) {
+    $data->created .= ' (' . format_date($data->created) . ')';
+  }
+  // we print our own page so as to avoid blocks
+  $output = dprint_r($data, TRUE);
+  print theme('page', $output, FALSE);
 }
 
 /**
@@ -1873,14 +1879,16 @@ function devel_cache_query_table($queries, $counts) {
     }
     $cell[$i][] = l($function, "http://$api/api/$version/function/$function");
 
-    if ($ar[1] == 'true') {
+    if ($ar[1] == 'true' || $function == 'cache_set') {
       // Extract cid and bin
       $components = explode(':', $ar[0]);
       $bin = array_pop($components);
       $cid = implode(':', $components);
       $cell[$i][] = $ar[0] . ' ' . l('(see result)', '/devel/cache/' . $bin . '/' . $cid, array('#attributes' => array('target' => '_blank')));
-    } else {
+    } else if ($function != 'cache_clear_all') {
       $cell[$i][] = array('data' => $ar[0] . ' is empty', 'class' => 'marker');
+    } else {
+      $cell[$i][] = $ar[0];
     }
     $i++;
     unset($diff, $count);

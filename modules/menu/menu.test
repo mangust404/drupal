@@ -548,7 +548,7 @@ class MenuTestCase extends DrupalWebTestCase {
    */
   private function getStandardMenuLink() {
     // Retrieve menu link id of the Log out menu link, which will always be on the front page.
-    $mlid = db_result(db_query("SELECT mlid FROM {menu_links} WHERE module = 'system' AND router_path = 'logout'"));
+    $mlid = db_result(db_query("SELECT mlid FROM {menu_links} WHERE is_system = 1 AND router_path = 'logout'"));
     $this->assertTrue($mlid > 0, 'Standard menu link id was found');
     // Load menu link.
     // Use api function so that link is translated for rendering.

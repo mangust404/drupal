@@ -13,6 +13,7 @@ function node_overview_types() {
   $names = node_get_types('names');
   $header = array(t('Name'), t('Type'), t('Description'), array('data' => t('Operations'), 'colspan' => '2'));
   $rows = array();
+  drupal_load('module', 'filter');
 
   foreach ($names as $key => $name) {
     $type = $types[$key];

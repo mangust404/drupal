@@ -762,6 +762,7 @@ function template_preprocess_forums(&$variables) {
 function template_preprocess_forum_list(&$variables) {
   global $user;
   $row = 0;
+  drupal_load('module', 'filter');
   // Sanitize each forum so that the template can safely print the data.
   foreach ($variables['forums'] as $id => $forum) {
     $variables['forums'][$id]->description = !empty($forum->description) ? filter_xss_admin($forum->description) : '';

@@ -604,6 +604,9 @@ function update_check_requirements($skip_warnings = FALSE) {
 ini_set('display_errors', FALSE);
 define('DRUPAL_ROOT', getcwd());
 
+ini_set('display_errors', 'on');
+error_reporting(E_ALL); 
+
 require_once './includes/bootstrap.inc';
 
 // We only load DRUPAL_BOOTSTRAP_CONFIGURATION for the update requirements
@@ -614,6 +617,7 @@ if (empty($op)) {
   drupal_bootstrap(DRUPAL_BOOTSTRAP_CONFIGURATION);
 
   require_once './includes/install.inc';
+  require_once './includes/common.inc';
   require_once './includes/file.inc';
   require_once './modules/system/system.install';
 
@@ -629,7 +633,7 @@ if (empty($op)) {
   drupal_init_language();
 
   // Set up theme system for the maintenance page.
-  drupal_maintenance_theme();
+  //drupal_maintenance_theme();
 
   // Check the update requirements for Drupal.
   update_check_requirements(TRUE);

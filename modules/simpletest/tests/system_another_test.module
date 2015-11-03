@@ -1,0 +1,8 @@
+<?php
+
+/**
+ * Implement hook_menu for test module loading by module_implements().
+ */
+function system_another_test_menu() {
+  return array();
+}

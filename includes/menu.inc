@@ -578,6 +578,11 @@ function _menu_translate(&$router_item, $map, $to_arg = FALSE) {
     // Fill in missing path elements, such as the current uid.
     _menu_link_map_translate($map, $router_item['to_arg_functions']);
   }
+
+  // Both menu load object and access functions callbacks usually placed in
+  // the main module file so we got to load main module file.
+  drupal_load('module', $router_item['module']);
+
   // The $path_map saves the pieces of the path as strings, while elements in
   // $map may be replaced with loaded objects.
   $path_map = $map;
@@ -676,6 +681,9 @@ function _menu_link_translate(&$item) {
         // An error occurred loading an object.
         $item['access'] = FALSE;
         return FALSE;
+      }
+      if (!empty($item['module'])) {
+        drupal_load('module', $item['module']);
       }
       _menu_check_access($item, $map);
     }
@@ -1231,17 +1239,15 @@ function menu_get_active_help() {
   $arg = drupal_help_arg(arg(NULL));
   $empty_arg = drupal_help_arg();
 
-  foreach (module_list() as $name) {
-    if (module_hook($name, 'help')) {
-      // Lookup help for this path.
-      if ($help = module_invoke($name, 'help', $router_path, $arg)) {
-        $output .= $help ."\n";
-      }
-      // Add "more help" link on admin pages if the module provides a
-      // standalone help page.
-      if ($arg[0] == "admin" && module_exists('help') && module_invoke($name, 'help', 'admin/help#'. $arg[2], $empty_arg) && $help) {
-        $output .= theme("more_help_link", url('admin/help/'. $arg[2]));
-      }
+  foreach (module_implements('help') as $name) {
+    // Lookup help for this path.
+    if ($help = module_invoke($name, 'help', $router_path, $arg)) {
+      $output .= $help ."\n";
+    }
+    // Add "more help" link on admin pages if the module provides a
+    // standalone help page.
+    if ($arg[0] == "admin" && module_exists('help') && module_invoke($name, 'help', 'admin/help#'. $arg[2], $empty_arg) && $help) {
+      $output .= theme("more_help_link", url('admin/help/'. $arg[2]));
     }
   }
   return $output;
@@ -1820,9 +1826,9 @@ function _menu_link_build($item) {
   elseif ($item['type'] == MENU_SUGGESTED_ITEM) {
     $item['hidden'] = 1;
   }
-  // Note, we set this as 'system', so that we can be sure to distinguish all
+  // Note, we set this 'is_system' flag, so that we can be sure to distinguish all
   // the menu links generated automatically from entries in {menu_router}.
-  $item['module'] = 'system';
+  $item['is_system'] = TRUE;
   $item += array(
     'menu_name' => 'navigation',
     'link_title' => $item['title'],
@@ -1851,7 +1857,7 @@ function _menu_navigation_links_rebuild($menu) {
     array_multisort($sort, SORT_NUMERIC, $menu_links);
 
     foreach ($menu_links as $item) {
-      $existing_item = db_fetch_array(db_query("SELECT mlid, menu_name, plid, customized, has_children, updated FROM {menu_links} WHERE link_path = '%s' AND module = '%s'", $item['link_path'], 'system'));
+      $existing_item = db_fetch_array(db_query("SELECT mlid, menu_name, plid, customized, has_children, updated FROM {menu_links} WHERE link_path = '%s' AND is_system = 1", $item['link_path']));
       if ($existing_item) {
         $item['mlid'] = $existing_item['mlid'];
         // A change in hook_menu may move the link to a different menu
@@ -1918,7 +1924,7 @@ function menu_link_delete($mlid, $path = NULL) {
  *   Forces deletion. Internal use only, setting to TRUE is discouraged.
  */
 function _menu_delete_item($item, $force = FALSE) {
-  if ($item && ($item['module'] != 'system' || $item['updated'] || $force)) {
+  if ($item && (!$item['is_system'] || $item['updated'] || $force)) {
     // Children get re-attached to the item's parent.
     if ($item['has_children']) {
       $result = db_query("SELECT mlid FROM {menu_links} WHERE plid = %d", $item['mlid']);
@@ -1977,6 +1983,7 @@ function menu_link_save(&$item) {
     'module' => 'menu',
     'customized' => 0,
     'updated' => 0,
+    'is_system' => FALSE,
   );
   $existing_item = FALSE;
   if (isset($item['mlid'])) {
@@ -1995,11 +2002,11 @@ function menu_link_save(&$item) {
     // Find the parent - it must be unique.
     $parent_path = $item['link_path'];
     $where = "WHERE link_path = '%s'";
-    // Only links derived from router items should have module == 'system', and
+    // Only links derived from router items should have is_system == TRUE, and
     // we want to find the parent even if it's in a different menu.
-    if ($item['module'] == 'system') {
-      $where .= " AND module = '%s'";
-      $arg2 = 'system';
+    if ($item['is_system']) {
+      $where .= " AND is_system = %d";
+      $arg2 = TRUE;
     }
     else {
       // If not derived from a router item, we respect the specified menu name.
@@ -2035,16 +2042,16 @@ function menu_link_save(&$item) {
       hidden, external, has_children,
       expanded, weight,
       module, link_title, options,
-      customized, updated) VALUES (
+      customized, updated, is_system) VALUES (
       '%s', %d, '%s',
       %d, %d, %d,
       %d, %d,
-      '%s', '%s', '%s', %d, %d)",
+      '%s', '%s', '%s', %d, %d, %d)",
       $item['menu_name'], $item['plid'], $item['link_path'],
       $item['hidden'], $item['_external'], $item['has_children'],
       $item['expanded'], $item['weight'],
       $item['module'],  $item['link_title'], serialize($item['options']),
-      $item['customized'], $item['updated']);
+      $item['customized'], $item['updated'], $item['is_system']);
     $item['mlid'] = db_last_insert_id('menu_links', 'mlid');
   }
 
@@ -2089,12 +2096,12 @@ function menu_link_save(&$item) {
     router_path = '%s', hidden = %d, external = %d, has_children = %d,
     expanded = %d, weight = %d, depth = %d,
     p1 = %d, p2 = %d, p3 = %d, p4 = %d, p5 = %d, p6 = %d, p7 = %d, p8 = %d, p9 = %d,
-    module = '%s', link_title = '%s', options = '%s', customized = %d WHERE mlid = %d",
+    module = '%s', link_title = '%s', options = '%s', customized = %d, is_system = %d WHERE mlid = %d",
     $item['menu_name'], $item['plid'], $item['link_path'],
     $item['router_path'], $item['hidden'], $item['_external'], $item['has_children'],
     $item['expanded'], $item['weight'],  $item['depth'],
     $item['p1'], $item['p2'], $item['p3'], $item['p4'], $item['p5'], $item['p6'], $item['p7'], $item['p8'], $item['p9'],
-    $item['module'],  $item['link_title'], serialize($item['options']), $item['customized'], $item['mlid']);
+    $item['module'],  $item['link_title'], serialize($item['options']), $item['customized'], $item['is_system'], $item['mlid']);
   // Check the has_children status of the parent.
   _menu_update_parental_status($item);
   menu_cache_clear($menu_name);
@@ -2497,7 +2504,6 @@ function _menu_router_build($callbacks) {
       'file' => '',
       'file path' => '',
       'include file' => '',
-      'module' => '',
     );
 
     // Calculate out the file to be included for each callback, if any.
@@ -2512,17 +2518,17 @@ function _menu_router_build($callbacks) {
       access_arguments, page_callback, page_arguments, fit,
       number_parts, tab_parent, tab_root,
       title, title_callback, title_arguments,
-      type, block_callback, description, position, weight, file)
+      type, block_callback, description, position, weight, file, module)
       VALUES ('%s', '%s', '%s', '%s',
       '%s', '%s', '%s', %d,
       %d, '%s', '%s',
       '%s', '%s', '%s',
-      %d, '%s', '%s', '%s', %d, '%s')",
+      %d, '%s', '%s', '%s', %d, '%s', '%s')",
       $path, $item['load_functions'], $item['to_arg_functions'], $item['access callback'],
       serialize($item['access arguments']), $item['page callback'], serialize($item['page arguments']), $item['_fit'],
       $item['_number_parts'], $item['tab_parent'], $item['tab_root'],
       $item['title'], $item['title callback'], $title_arguments,
-      $item['type'], $item['block callback'], $item['description'], $item['position'], $item['weight'], $item['include file']);
+      $item['type'], $item['block callback'], $item['description'], $item['position'], $item['weight'], $item['include file'], $item['module']);
   }
   // Sort the masks so they are in order of descending fit, and store them.
   $masks = array_keys($masks);

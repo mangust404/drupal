@@ -30,6 +30,7 @@ function node_add_page() {
  */
 function theme_node_add_list($content) {
   $output = '';
+  drupal_load('module', 'filter');
 
   if ($content) {
     $output = '<dl class="node-type-list">';
@@ -297,6 +298,7 @@ function node_body_field(&$node, $label, $word_count) {
     '#required' => ($word_count > 0),
   );
 
+  drupal_load('module', 'filter');
   $form['format'] = filter_form($node->format);
 
   return $form;
