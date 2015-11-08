@@ -39,25 +39,33 @@ function devel_install() {
   // New module weights in core: put devel as the very last in the chain.
   db_query("UPDATE {system} SET weight = 88 WHERE name = 'devel'");
   
-  // Create our menu. See menu.install for an example.
-  $t = get_t();
-  db_query("INSERT INTO {menu_custom} (menu_name, title, description) VALUES ('%s', '%s', '%s')", 'devel', $t('Development'), $t('Development links.'));
-  
-  $item = array(
-    'link_title' => 'Run cron',
-    'link_path' => 'admin/reports/status/run-cron',
-    'menu_name' => 'devel',
-    'module' => 'devel',
-  );
-  menu_link_save($item);
-  
-  $item = array(
-    'link_title' => 'Devel settings',
-    'link_path' => 'admin/settings/devel',
-    'menu_name' => 'devel',
-    'module' => 'devel',
-  );
-  menu_link_save($item);
+}
+
+ /**
+ * Implementation of hook_enable()
+ */
+function devel_enable() {
+  if (module_exists('menu') && !db_result(db_query("SELECT menu_name FROM {menu_custom} WHERE menu_name = 'devel'"))) {
+    // Create our menu. See menu.install for an example.
+    $t = get_t();
+    db_query("INSERT INTO {menu_custom} (menu_name, title, description) VALUES ('%s', '%s', '%s')", 'devel', $t('Development'), $t('Development links.'));
+    
+    $item = array(
+      'link_title' => 'Run cron',
+      'link_path' => 'admin/reports/status/run-cron',
+      'menu_name' => 'devel',
+      'module' => 'devel',
+    );
+    menu_link_save($item);
+    
+    $item = array(
+      'link_title' => 'Devel settings',
+      'link_path' => 'admin/settings/devel',
+      'menu_name' => 'devel',
+      'module' => 'devel',
+    );
+    menu_link_save($item);
+  }
 }
 
  /**
