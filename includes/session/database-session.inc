@@ -2,7 +2,7 @@
 
 /**
  * @file
- * User session handling functions. Backport from D7
+ * User database session handling functions. Backport from D7
  *
  * The user-level session storage handlers:
  * - _drupal_session_open()
@@ -15,6 +15,11 @@
  * automatically by PHP. These functions should not be called directly. Session
  * data should instead be accessed via the $_SESSION superglobal.
  */
+
+/**
+ * Sessions storage is database.
+ */
+define('SESSION_STORAGE', 'database');
 
 /**
  * Session handler assigned by session_set_save_handler().
@@ -85,20 +90,8 @@ function _drupal_session_read($sid) {
   }
 
   // Otherwise, if the session is still active, we have a record of the
-  // client's session in the database. If it's HTTPS then we are either have
-  // a HTTPS session or we are about to log in so we check the sessions table
-  // for an anonymous session with the non-HTTPS-only cookie.
-  if ($is_https) {
-    $user = db_fetch_object(db_query("SELECT u.*, s.* FROM {users} u INNER JOIN {sessions} s ON u.uid = s.uid WHERE s.ssid = '%s'", $sid));
-    if (!$user) {
-      if (isset($_COOKIE[$insecure_session_name])) {
-        $user = db_fetch_object(db_query("SELECT u.*, s.* FROM {users} u INNER JOIN {sessions} s ON u.uid = s.uid WHERE s.sid = '%s' AND s.uid = 0", $_COOKIE[$insecure_session_name]));
-      }
-    }
-  }
-  else {
-    $user = db_fetch_object(db_query("SELECT u.*, s.* FROM {users} u INNER JOIN {sessions} s ON u.uid = s.uid WHERE s.sid = '%s'", $sid));
-  }
+  // client's session in the database.
+  $user = db_fetch_object(db_query("SELECT u.*, s.* FROM {users} u INNER JOIN {sessions} s ON u.uid = s.uid WHERE s.sid = '%s'", $sid));
 
   // We found the client's session record and they are an authenticated,
   // active user.

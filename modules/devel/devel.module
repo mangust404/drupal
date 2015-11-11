@@ -901,15 +901,15 @@ function devel_shutdown_real() {
       // Query log on.
       $sum = 0;
       if (variable_get('devel_query_display', FALSE)) {
-        $tab_output = '<div class="dev-query">';
+        $tab_output = '<div class="dev-query database-query">';
         $tab_output .= $query_summary;
+        $txt = t_safe(' Queries taking longer than @threshold ms and queries executed more than once, are <span class="marker">highlighted</span>.', array('@threshold' => variable_get('devel_execution', 5)));
+        if (variable_get('dev_timer', 0)) {
+          $txt .= devel_timer();
+        }        
         // calling theme() during shutdown is very bad if registry gets rebuilt like when making a change on  admin/build/modules
         // so we check for presence of theme registry before calling theme()
         if (function_exists('theme_get_registry') && theme_get_registry()) {
-          $txt = t_safe(' Queries taking longer than @threshold ms and queries executed more than once, are <span class="marker">highlighted</span>.', array('@threshold' => variable_get('devel_execution', 5)));
-          if (variable_get('dev_timer', 0)) {
-            $txt .= devel_timer();
-          }
           $tab_output .= $txt;
           $tab_output .= '</div>';
           $tab_output .= devel_query_table($queries, $counts);
@@ -927,12 +927,14 @@ function devel_shutdown_real() {
           'weight' => 1,
         );
 
-        $cache_tab_output = '<div class="dev-query">';
+        $cache_tab_output = '<div class="dev-query cache-query">';
         $cache_tab_output .= $cache_query_summary;
+
+        $txt = t_safe(' Queries taking longer than @threshold ms and queries executed more than once, are <span class="marker">highlighted</span>.', array('@threshold' => variable_get('devel_execution', 5)));
+
         // calling theme() during shutdown is very bad if registry gets rebuilt like when making a change on  admin/build/modules
         // so we check for presence of theme registry before calling theme()
         if (function_exists('theme_get_registry') && theme_get_registry()) {
-          $txt = t_safe(' Queries taking longer than @threshold ms and queries executed more than once, are <span class="marker">highlighted</span>.', array('@threshold' => variable_get('devel_execution', 5)));
           $cache_tab_output .= $txt;
           $cache_tab_output .= '</div>';
           $cache_tab_output .= devel_cache_query_table($cache_queries, $cache_counts);
@@ -940,15 +942,68 @@ function devel_shutdown_real() {
         else {
           $cache_tab_output .= $txt;
           $cache_tab_output .= '</div>';
-          ob_start();
-          dprint_r($queries);
-          $cache_tab_output .= ob_get_clean();
+          $cache_tab_output .= '<pre>' . print_r($cache_queries, TRUE) . '</pre>';
         }
         $tabs['cache_query'] = array(
           'title' => 'Cache Query log',
           'output' => $cache_tab_output,
           'weight' => 2,
         );
+
+        if (CACHE_ENGINE == 'memcache') {
+          $memcache_tab_output = '';
+          // Extra tab for memcache.
+          $memcache = dmemcache_object();
+          if(method_exists($memcache, 'getExtendedStats')) {
+            $overall_stats = $memcache->getExtendedStats();
+          }
+          else if(method_exists($memcache, 'getStats')) {
+            $overall_stats = $memcache->getStats();
+          }
+          foreach ($overall_stats as $server => $stats) {
+            $memcache_tab_output .= '<div class="dev-query memcache-status">';
+            $memcache_tab_output .= '<p>Server ' . $server . '</p>';
+            foreach($stats as $key => $value) {
+              if (strpos($key, 'byte') !== FALSE && function_exists('format_size')) {
+                // Pretty format bytes.
+                $value = format_size($value);
+              }
+              else if (in_array($key, array('uptime'))) {
+                $value = format_interval($value);
+              }
+              $memcache_tab_output .= $key . ' = ' . $value . "<br />\n";
+            }
+          }
+
+          
+          $memcache_tab_output .= '</div><div class="dev-query memcache-info">Memcache internal variables:<br />';
+
+          $txt = '$_SERVER[\'REQUEST_TIME\'] = ' . $_SERVER['REQUEST_TIME'] . "<br />\n";
+          foreach (array('cache_block', 'cache_page') as $expirable_bin) {
+            $txt .= 'cache_flush_' . $expirable_bin . ' = ' . variable_get("cache_flush_$expirable_bin", 0) . "<br />\n";
+            $txt .= 'cache_content_flush_' . $expirable_bin . ' = ' . variable_get("cache_content_flush_$expirable_bin", 0) . "<br />\n";
+          }
+          $txt .= '$cache_tables = ' . dprint_r(isset($_SESSION['cache_flush']) ? $_SESSION['cache_flush'] : NULL, TRUE) . "<br />\n";
+          $txt .= '$cache_lifetime = ' . variable_get('cache_lifetime', 0) . "<br />\n";
+          $txt .= '$wildcard_flushes = ' . dprint_r(variable_get('memcache_wildcard_flushes', array()), TRUE) . "\n";
+          $txt .= '$wildcard_invalidate = ' . variable_get('memcache_wildcard_invalidate', MEMCACHE_WILDCARD_INVALIDATE) . "<br />\n";
+
+          // calling theme() during shutdown is very bad if registry gets rebuilt like when making a change on  admin/build/modules
+          // so we check for presence of theme registry before calling theme()
+          if (function_exists('theme_get_registry') && theme_get_registry()) {
+            $memcache_tab_output .= $txt;
+            $memcache_tab_output .= '</div>';
+          }
+          else {
+            $memcache_tab_output .= $txt;
+            $memcache_tab_output .= '</div>';
+          }
+          $tabs['memcache_info'] = array(
+            'title' => 'Memcache info',
+            'output' => $memcache_tab_output,
+            'weight' => 3,
+          );          
+        }
       }
 
       if (variable_get('dev_mem', FALSE) && function_exists('memory_get_usage')) {
@@ -1006,7 +1061,7 @@ function devel_shutdown_real() {
         // Falling back to simple plain output.
         foreach ($tabs as $name => $tab) {
           print '<h2>' . $tabs[$name]['title'] . '</h2>';
-          print $tabs['output'];
+          print $tab['output'];
           print "<br /><br />\n\n";
         }
       }
@@ -1860,7 +1915,7 @@ function devel_cache_query_table($queries, $counts) {
   $api = variable_get('devel_api_url', 'api.drupal.org');
   foreach ($queries as $query) {
     // dprint_r($query);
-    $ar = explode("\n", $query[0]);
+    $ar = explode("\n", $query[0], 3);
     $function = array_shift($ar);
     $count = isset($counts[$query[0]]) ? $counts[$query[0]] : 0;
 
@@ -1879,16 +1934,24 @@ function devel_cache_query_table($queries, $counts) {
     }
     $cell[$i][] = l($function, "http://$api/api/$version/function/$function");
 
-    if ($ar[1] == 'true' || $function == 'cache_set') {
+    if (strpos($ar[1], 'false') === FALSE || $function == 'cache_set') {
       // Extract cid and bin
       $components = explode(':', $ar[0]);
       $bin = array_pop($components);
       $cid = implode(':', $components);
-      $cell[$i][] = $ar[0] . ' ' . l('(see result)', '/devel/cache/' . $bin . '/' . $cid, array('#attributes' => array('target' => '_blank')));
+      if (!empty($GLOBALS['drupal_test_info'])) {
+        $var_output = print_r($ar[1], TRUE);
+        // Suppress very long output data.
+        $var_output = (strlen($var_output) > 300? substr($var_output, 0, 300) . '... (' . (strlen($var_output) - 300) . ' chars)': $var_output);
+        $cell[$i][] = $ar[0] . ' ' . '<pre>' . $var_output . '</pre>';
+      }
+      else {
+        $cell[$i][] = $ar[0] . ' ' . l('(see result)', '/devel/cache/' . $bin . '/' . $cid, array('#attributes' => array('target' => '_blank')));
+      }
     } else if ($function != 'cache_clear_all') {
-      $cell[$i][] = array('data' => $ar[0] . ' is empty', 'class' => 'marker');
+      $cell[$i][] = array('data' => $ar[0] . ' is empty (' . print_r($ar[1], TRUE) . ')', 'class' => 'marker');
     } else {
-      $cell[$i][] = $ar[0];
+      $cell[$i][] = $ar[0] . ' (' . print_r($ar[1], TRUE) . ')';
     }
     $i++;
     unset($diff, $count);

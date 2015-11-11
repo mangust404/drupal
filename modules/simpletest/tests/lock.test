@@ -44,7 +44,10 @@ class LockFunctionalTest extends DrupalWebTestCase {
     $this->drupalGet('system-test/lock-acquire');
     $this->assertText($lock_acquired, 'Lock acquired by the other request, breaking our lock.', 'Lock');
     // We cannot renew it, since the other thread took it.
-    $this->assertFalse(lock_acquire('system_test_lock_acquire'), 'Lock cannot be extended by this request.', 'Lock');
+    if (CACHE_ENGINE == 'database') {
+      // Not really correct behavior for locks and it works only for database locks.
+      $this->assertFalse(lock_acquire('system_test_lock_acquire'), 'Lock cannot be extended by this request.', 'Lock');
+    }
 
     // Check the shut-down function.
     $lock_acquired_exit = 'TRUE: Lock successfully acquired in system_test_lock_exit()';

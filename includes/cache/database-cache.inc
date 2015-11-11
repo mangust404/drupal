@@ -1,6 +1,17 @@
 <?php
 
 /**
+ * @file
+ * Original database cache implementation from D6. Do not use it on production!
+ * Database cache is killing the idea of caching. Use memcache implementation instead.
+ */
+
+/**
+ * Caching engine is database.
+ */
+define('CACHE_ENGINE', 'database');
+
+/**
  * Return data from the persistent cache. Data may be stored as either plain text or as serialized data.
  * cache_get will automatically return unserialized objects and arrays.
  *

@@ -765,6 +765,9 @@ function module_implements($hook, $sort = FALSE, $reset = FALSE) {
     // Allow modules to change the weight of specific implementations but avoid
     // an infinite loop.
     if ($hook != 'module_implements_alter') {
+      if (!function_exists('drupal_alter')) {
+        include_once(DRUPAL_ROOT . '/includes/common.inc');
+      }
       drupal_alter('module_implements', $implementations[$hook], $hook);
     }
   }

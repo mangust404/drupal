@@ -115,6 +115,8 @@ class BootstrapPageCacheTestCase extends DrupalWebTestCase {
 
   function setUp() {
     parent::setUp('system_test');
+    // 1 second delay between installation cache flushes and real cache testing is needed.
+    sleep(1);
   }
 
   /**
@@ -277,6 +279,10 @@ class BootstrapVariableTestCase extends DrupalWebTestCase {
     variable_del('simpletest_bootstrap_variable_test');
     $variable = variable_get('simpletest_bootstrap_variable_test', $default_value);
     $this->assertIdentical($variable, $default_value, 'Deleting variables');
+
+    // Make sure the variable deleted across multiple requests.
+    $this->drupalGet('system-test/variable-get');
+    $this->assertText('variable_default_value', 'Variable deleted across multiple requests');
   }
 
   /**
@@ -346,7 +352,15 @@ class HookBootExitTestCase extends DrupalWebTestCase {
     $this->assertEqual(db_result(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = '%s' AND message = '%s'", 'system_test', 'hook_exit')), $calls, t('hook_exit not called with aggressive cache and a cached page.'));
 
     // Test with page cache cleared, init and exit should be called.
-    $this->assertTrue(db_query("DELETE FROM {cache_page}"), t('Page cache cleared.'));
+    switch (CACHE_ENGINE) {
+      case 'database':
+        $this->assertTrue(db_query("DELETE FROM {cache_page}"), t('Page cache cleared.'));
+        break;
+      case 'memcache': default:
+        cache_clear_all('*', 'cache_page', TRUE);
+        break;
+    }
+    
     $this->drupalGet('');
     $calls++;
     $this->assertEqual($this->drupalGetHeader('X-System-test-boot'), $random, t('hook_boot called with aggressive cache and no cached page.'));

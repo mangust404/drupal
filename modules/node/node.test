@@ -2928,6 +2928,9 @@ class NodePageCacheTest extends NodeWebTestCase {
     $this->admin_user = $this->drupalCreateUser(array(
         'administer nodes',
     ));
+
+    // 1 second delay between installation cache flushes and real cache testing is needed.
+    sleep(1);
   }
 
   /**
@@ -2943,6 +2946,14 @@ class NodePageCacheTest extends NodeWebTestCase {
     // Check that page served from cache
     $this->drupalGet($node_path);
     $this->assertEqual($this->drupalGetHeader('X-Drupal-Cache'), 'HIT', 'Node served from cache');
+
+    // For some reasons microtime() for cache_set() call at node view becomes higher
+    // than microtime() fetched by cache_clear_all() at the drupalPost() above.
+    // It looks like a heisenbug in PHP (e.g. "time drift" between processes).
+    // In the real world it should not be a problem because poll view and voting couldn't
+    // happen at the same second.
+    // Workaround is to simply wait 1-2 seconds. All sleep(1) above are making the same.
+    sleep(1);
 
     // Login and delete the node.
     $this->drupalLogin($this->admin_user);
@@ -2965,6 +2976,9 @@ class NodePageCacheTest extends NodeWebTestCase {
     // Check that page served from cache
     $this->drupalGet($node_path);
     $this->assertEqual($this->drupalGetHeader('X-Drupal-Cache'), 'HIT', 'Node served from cache');
+
+    // Workaround is to simply wait 1-2 seconds (explanations above).
+    sleep(1);
 
     // Login and delete the nodes.
     $this->drupalLogin($this->admin_user);

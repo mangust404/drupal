@@ -1330,6 +1330,8 @@ class FormsFormStoragePageCacheTestCase extends DrupalWebTestCase {
     variable_set('cache', TRUE);
     // disable login block
     db_query("UPDATE {blocks} SET status = 0 WHERE module = 'user'");
+    // 1 second delay between installation cache flushes and real cache testing is needed.
+    sleep(1);
   }
 
   /**

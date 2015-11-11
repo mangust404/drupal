@@ -125,7 +125,7 @@ foreach ($domains as $domain) {
           $summary_total[$domain]['exception'] += intval($matches[4]);
 
           if (!empty($matches[6])) {
-            $summary_total['error_classes'][] = $matches[6];
+            $summary_total[$domain]['error_classes'][] = $matches[6];
           }
         }
       }
@@ -134,14 +134,14 @@ foreach ($domains as $domain) {
   proc_close($pp);
 }
 
-print "\n\nOverall summary:\n\n";
+print "\n\n-------------\n\nOverall summary:\n\n";
 
 foreach ($summary_total as $domain => $summary) {
   $color = SIMPLETEST_SCRIPT_COLOR_PASS;
-  if (count($summary['fail']) > 0) {
+  if ($summary['fail'] > 0) {
     $color = SIMPLETEST_SCRIPT_COLOR_FAIL;
   }
-  else if(count($summary['exception']) > 0) {
+  else if($summary['exception'] > 0) {
     $color = SIMPLETEST_SCRIPT_COLOR_EXCEPTION;
   }
 
@@ -151,9 +151,9 @@ foreach ($summary_total as $domain => $summary) {
     '@exception' => $summary['exception'] == 1 ? '1 exception' : $summary['exception'] . ' exceptions',
   );
 
-  simpletest_script_print($domain . ': ' . strtr('@pass, @fail, and @exception', $args) . "\n", $color);
+  simpletest_script_print($domain . ': ' . strtr('@pass, @fail, and @exception', $args), $color);
   if (count($summary['error_classes']) > 0) {
-    print "Error classes: " . implode(',', $summary['error_classes']) . "\n";
+    print "\nError classes: " . implode(',', $summary['error_classes']) . "\n\n";
   }
   print "\n";
 }
@@ -167,6 +167,5 @@ foreach ($summary_total as $domain => $summary) {
  * @param $color_code The color code to use for coloring.
  */
 function simpletest_script_print($message, $color_code) {
-  global $args;
   echo "\033[" . $color_code . "m" . $message . "\033[0m";
 }

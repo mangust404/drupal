@@ -10,6 +10,12 @@
  * on performance.
  */
 
+/**
+ * Caching engine is stub.
+ */
+define('CACHE_ENGINE', 'stub');
+
+
 function cache_get($key, $table = 'cache') {
   return FALSE;
 }

@@ -1099,8 +1099,11 @@ function drupal_serve_page_from_cache(stdClass $cache) {
   $max_age = !isset($_COOKIE[session_name()]) || isset($hook_boot_headers['vary']) ? variable_get('page_cache_maximum_age', 0) : 0;
   $default_headers['Cache-Control'] = 'public, max-age=' . $max_age;
 
+  // Some cache engines may store date with microseconds.
+  $created = intval($cache->created);
+
   // Entity tag should change if the output changes.
-  $etag = '"' . $cache->created . '-' . intval($return_compressed) . '"';
+  $etag = '"' . $created . '-' . intval($return_compressed) . '"';
   header('Etag: ' . $etag);
 
   // See if the client has provided the required HTTP headers.
@@ -1109,7 +1112,7 @@ function drupal_serve_page_from_cache(stdClass $cache) {
 
   if ($if_modified_since && $if_none_match
       && $if_none_match == $etag // etag must match
-      && $if_modified_since == $cache->created) {  // if-modified-since must match
+      && $if_modified_since == $created) {  // if-modified-since must match
     header($_SERVER['SERVER_PROTOCOL'] . ' 304 Not Modified');
     drupal_send_headers($default_headers);
     return;
@@ -1120,7 +1123,7 @@ function drupal_serve_page_from_cache(stdClass $cache) {
     drupal_add_http_header($name, $value);
   }
 
-  $default_headers['Last-Modified'] = gmdate(DATE_RFC7231, $cache->created);
+  $default_headers['Last-Modified'] = gmdate(DATE_RFC7231, $created);
 
   // HTTP/1.0 proxies does not support the Vary header, so prevent any caching
   // by sending an Expires date in the past. HTTP/1.1 clients ignores the
@@ -1619,7 +1622,7 @@ function _drupal_bootstrap($phase) {
     case DRUPAL_BOOTSTRAP_EARLY_PAGE_CACHE:
       // Allow specifying special cache handlers in settings.php, like
       // using memcached or files for storing cache information.
-      require_once variable_get('cache_inc', './includes/cache.inc');
+      require_once variable_get('cache_inc', './includes/cache/database-cache.inc');
       // If the page_cache_fastpath is set to TRUE in settings.php and
       // page_cache_fastpath (implemented in the special implementation of
       // cache.inc) printed the page and indicated this with a returned TRUE
@@ -1648,7 +1651,7 @@ function _drupal_bootstrap($phase) {
       db_set_active();
       // Allow specifying alternate lock implementations in settings.php, like
       // those using APC or memcached.
-      require_once variable_get('lock_inc', './includes/lock.inc');
+      require_once variable_get('lock_inc', './includes/lock/database-lock.inc');
       lock_init();
       break;
 
@@ -1666,7 +1669,7 @@ function _drupal_bootstrap($phase) {
       break;
 
     case DRUPAL_BOOTSTRAP_SESSION:
-      require_once variable_get('session_inc', './includes/session.inc');
+      require_once variable_get('session_inc', './includes/session/database-session.inc');
 
       // Backport from D7
       drupal_session_initialize();

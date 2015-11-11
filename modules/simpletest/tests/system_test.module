@@ -59,7 +59,7 @@ function system_test_menu() {
   $items['system-test/variable-get'] = array(
     'title' => 'Variable Get',
     'page callback' => 'variable_get',
-    'page arguments' => array('simpletest_bootstrap_variable_test', NULL),
+    'page arguments' => array('simpletest_bootstrap_variable_test', 'variable_default_value'),
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
   );

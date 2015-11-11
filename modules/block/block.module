@@ -480,7 +480,6 @@ function block_list($region) {
       }
       // Use the user's block visibility setting, if necessary
       if ($block->custom != 0) {
-        //print_R($user);
         if ($user->uid && isset($user->data['block'][$block->module][$block->delta])) {
           $enabled = $user->data['block'][$block->module][$block->delta];
         }

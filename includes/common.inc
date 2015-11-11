@@ -597,6 +597,10 @@ function drupal_goto($path = '', $options = array(), $http_response_code = 302) 
 
   header('Location: '. $url, TRUE, $http_response_code);
 
+  if (!empty($GLOBALS['drupal_test_info']) && variable_get('dev_query', 0) && function_exists('devel_shutdown_real')) {
+    // Allow output for redirects in testing environments.
+    unset($GLOBALS['devel_redirecting']);
+  }
   // The "Location" header sends a redirect status code to the HTTP daemon. In
   // some cases this can be wrong, so we make sure none of the code below the
   // drupal_goto() call gets executed upon redirection.

@@ -109,11 +109,13 @@ class DevelLogTestCase extends DrupalWebTestCase {
 
     $this->assertText("cache_set$name:cache");
     $this->assertText("cache_get$name:cache");
-    $this->assertText("cache_clear_all$name:cache");
-
-    // Click on any result link. It should exist.
-    $this->clickLink('(see result)');
-    $this->assertResponse(200);
+    if (CACHE_ENGINE == 'memcache') {
+      // For memcache engine dmemcache_del call appears like "cache_delete".
+      $this->assertText("cache_delete$name:cache");
+    }
+    else {
+      $this->assertText("cache_clear_all$name:cache");
+    }
 
     // Set a custom cache entry and try to fetch it by url.
     $name = $this->randomName();
@@ -142,7 +144,7 @@ class DevelLogTestCase extends DrupalWebTestCase {
 
     $matches = array();
     if($this->assertTrue(preg_match('/Page execution time was ([0-9\.]+) ms\./s', $this->content, $matches), 'Execution timer found')) {
-      $this->assertTrue(floatval($matches[1]) > 150, 'Page was slower than 150ms.');
+      $this->assertTrue(floatval($matches[1]) > 150, 'Page should be slower than 150ms. Returned execution time: ' . floatval($matches[1]) . 'ms.');
     }
 
     // Also enable query log to ensure that page execution timer still visible.

@@ -123,7 +123,8 @@ function devel_test_watchdog_call($name) {
  * Menu callback for emulating a page which runs slower than 150ms.
  */
 function devel_test_slow_page() {
-  usleep(150);
+  // Wait 150 ms.
+  usleep(150000);
   return 'Success';
 }
 

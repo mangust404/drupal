@@ -578,8 +578,11 @@ class BlockCacheTestCase extends DrupalWebTestCase {
     $this->drupalGet('');
     $this->assertText($old_content, 'Block is served from the cache.');
 
+    // Wait 1 second so cache_flush_cache_block variable will not be the same.
+    sleep(1);
     // Clear the cache and verify that the stale data is no longer there.
     cache_clear_all();
+
     $this->drupalGet('');
     $this->assertNoText($old_content, 'Block cache clear removes stale cache data.');
     $this->assertText($current_content, 'Fresh block content is displayed after clearing the cache.');
@@ -610,8 +613,13 @@ class BlockCacheTestCase extends DrupalWebTestCase {
    */
   function testCacheGlobal() {
     $this->setCacheMode(BLOCK_CACHE_GLOBAL);
+    // Block module uses CACHE_TEMPORARY flag so zero cache lifetime will result an invalid
+    // cache if internal site query time will differs from current time.
+    variable_set('cache_lifetime', 5);
+
     $current_content = $this->randomName();
     variable_set('block_test_content', $current_content);
+    $this->pass('Set new content to block: ' . $current_content);
 
     $this->drupalGet('');
     $this->assertText($current_content, 'Block content displays.');
@@ -619,6 +627,7 @@ class BlockCacheTestCase extends DrupalWebTestCase {
     $old_content = $current_content;
     $current_content = $this->randomName();
     variable_set('block_test_content', $current_content);
+    $this->pass('Set new content to block: ' . $current_content);
 
     $this->drupalLogout();
     $this->drupalGet('user');
@@ -660,6 +669,7 @@ class BlockCacheTestCase extends DrupalWebTestCase {
     $current_content = $this->randomName();
     variable_set('block_test_content', $current_content);
 
+    sleep(1);
     $this->drupalGet('');
     $this->assertText($old_content, 'Block is served from per-user cache.');
 
@@ -677,6 +687,9 @@ class BlockCacheTestCase extends DrupalWebTestCase {
    */
   function testCachePerPage() {
     $this->setCacheMode(BLOCK_CACHE_PER_PAGE);
+    // Block module uses CACHE_TEMPORARY flag so zero cache lifetime will result an invalid
+    // cache if internal site query time will differs from current time.
+    variable_set('cache_lifetime', 5);
     $current_content = $this->randomName();
     variable_set('block_test_content', $current_content);
 

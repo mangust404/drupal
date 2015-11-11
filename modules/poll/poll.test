@@ -513,6 +513,9 @@ class PollVoteCheckHostname extends PollTestCase {
     // Create web users.
     $this->web_user1 = $this->drupalCreateUser(array('access content', 'vote on polls', 'cancel own vote'));
     $this->web_user2 = $this->drupalCreateUser(array('access content', 'vote on polls'));
+
+    // 1 second delay between installation cache flushes and real cache testing is needed.
+    sleep(1);
   }
 
   /**
@@ -546,6 +549,15 @@ class PollVoteCheckHostname extends PollTestCase {
     $this->drupalGet('node/' . $this->poll_nid);
     $this->assertEqual($this->drupalGetHeader('x-drupal-cache'), 'MISS', 'Page was cacheable but was not in the cache.');
     $this->drupalGet('node/' . $this->poll_nid);
+
+    // For some reasons microtime() for cache_set() call at node view becomes higher
+    // than microtime() fetched by cache_clear_all() at the drupalPost() above.
+    // It looks like a heisenbug in PHP (e.g. "time drift" between processes).
+    // In the real world it should not be a problem because poll view and voting couldn't
+    // happen at the same second.
+    // Workaround is to simply wait 1-2 seconds. All sleep(1) above are making the same.
+    sleep(1);
+
     $this->assertEqual($this->drupalGetHeader('x-drupal-cache'), 'HIT', 'Page was cached.');
 
     // Anonymous user vote on Poll.
@@ -557,6 +569,10 @@ class PollVoteCheckHostname extends PollTestCase {
 
     // Check to make sure Anonymous user cannot vote again.
     $this->drupalGet('node/' . $this->poll_nid);
+
+    // Workaround is to simply wait 1-2 seconds (explanations above).
+    sleep(1);
+
     // TODO: investigate why current D6 doesn't meet assertion requirements.
     //$this->assertFalse($this->drupalGetHeader('x-drupal-cache'), 'Page was not cacheable.');
     $elements = $this->xpath('//input[@value="Vote"]');
@@ -583,6 +599,10 @@ class PollVoteCheckHostname extends PollTestCase {
     // Check to make sure Anonymous user can vote again with a new session after
     // a hostname change.
     $this->drupalGet('node/' . $this->poll_nid);
+
+    // Workaround is to simply wait 1-2 seconds (explanations above).
+    sleep(1);
+
     $this->assertEqual($this->drupalGetHeader('x-drupal-cache'), 'MISS', 'Page was cacheable but was not in the cache.');
     $this->drupalPost(NULL, $edit, t('Vote'));
     $this->assertText(t('Your vote was recorded.'), format_string('%user vote was recorded.', array('%user' => $this->web_user2->name)));

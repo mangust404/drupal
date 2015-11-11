@@ -21,7 +21,7 @@ function install_main() {
   require_once './includes/bootstrap.inc';
   drupal_bootstrap(DRUPAL_BOOTSTRAP_CONFIGURATION);
   require_once './includes/form.inc';
-  require_once './includes/session.inc';
+  require_once './includes/session/database-session.inc';
 
   // The user agent header is used to pass a database prefix in the request when
   // running tests. However, for security reasons, it is imperative that no
@@ -68,8 +68,8 @@ function install_main() {
     // Since we have a database connection, we use the normal cache system.
     // This is important, as the installer calls into the Drupal system for
     // the clean URL checks, so we should maintain the cache properly.
-    require_once './includes/cache.inc';
-    $conf['cache_inc'] = './includes/cache.inc';
+    require_once './includes/cache/file.inc';
+    $conf['cache_inc'] = './includes/cache/file.inc';
 
     // Establish a connection to the database.
     require_once './includes/database.inc';
@@ -86,8 +86,8 @@ function install_main() {
     // for cached data will fail, we temporarily replace the normal cache
     // system with a stubbed-out version that short-circuits the actual
     // caching process and avoids any errors.
-    require_once './includes/cache-install.inc';
-    $conf['cache_inc'] = './includes/cache-install.inc';
+    require_once './includes/cache/stub-cache.inc';
+    $conf['cache_inc'] = './includes/cache/stub-cache.inc';
 
     $task = NULL;
   }
@@ -145,8 +145,8 @@ function install_main() {
     // The default lock implementation uses a database table,
     // so we cannot use it for install, but we still need
     // the API functions available.
-    require_once './includes/lock-install.inc';
-    $conf['lock_inc'] = './includes/lock-install.inc';
+    require_once './includes/lock/stub-lock.inc';
+    $conf['lock_inc'] = './includes/lock/stub-lock.inc';
     lock_init();
 
     // Install system.module.
