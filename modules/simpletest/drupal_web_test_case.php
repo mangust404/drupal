@@ -13,6 +13,18 @@
 module_load_include('function.inc', 'simpletest');
 
 /**
+ * Global variable that holds information about the tests being run.
+ *
+ * An array, with the following keys:
+ *  - 'test_run_id': the ID of the test being run, in the form 'simpletest_%"
+ *  - 'in_child_site': TRUE if the current request is a cURL request from
+ *     the parent site.
+ *
+ * @var array
+ */
+global $drupal_test_info;
+
+/**
  * Base class for Drupal tests.
  *
  * Do not extend this class, use one of the subclasses in this file.
@@ -1296,6 +1308,13 @@ class DrupalWebTestCase extends DrupalTestCase {
     ini_set('log_errors', 1);
     ini_set('error_log', $directory . '/error.log');
 
+    // Set the test information for use in other parts of Drupal.
+    $test_info = &$GLOBALS['drupal_test_info'];
+    $test_info['test_run_id'] = $db_prefix;
+    $test_info['in_child_site'] = FALSE;
+
+    drupal_static_reset('dmemcache_key');
+
 //    include_once DRUPAL_ROOT . '/includes/install.inc';
     include_once './includes/install.inc';
 
@@ -1497,6 +1516,11 @@ class DrupalWebTestCase extends DrupalTestCase {
       foreach ($schema as $name => $table) {
         db_drop_table($ret, $name);
       }
+
+      // Set the test information for use in other parts of Drupal.
+      $test_info = &$GLOBALS['drupal_test_info'];
+      $test_info['test_run_id'] = NULL;
+      $test_info['in_child_site'] = FALSE;
 
       // Return the database prefix to the original.
       $db_prefix = $this->originalPrefix;
@@ -3383,6 +3407,18 @@ class DrupalWebTestCase extends DrupalTestCase {
     }
   }
 
+  /**
+   * Show devel log for internal browser pages. Extremely helpful for debugging.
+   * Use it only while debugging. DO NOT use it permanently in test cases because
+   * a lot of debugging output may result to invalid assertions.
+   */
+  protected function enableDevelLog() {
+    module_enable(array('devel'));
+    variable_set('dev_query', TRUE);
+    variable_set('devel_query_display', TRUE);
+    user_role_change_permissions(DRUPAL_ANONYMOUS_RID, array('access devel information' =>TRUE));
+    user_role_change_permissions(DRUPAL_AUTHENTICATED_RID, array('access devel information' =>TRUE));
+  }
 }
 
 /**
