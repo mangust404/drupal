@@ -1620,6 +1620,7 @@ function _drupal_bootstrap($phase) {
       break;
 
     case DRUPAL_BOOTSTRAP_EARLY_PAGE_CACHE:
+      require_once './includes/cache/func-cache.inc';
       // Allow specifying special cache handlers in settings.php, like
       // using memcached or files for storing cache information.
       require_once variable_get('cache_inc', './includes/cache/database-cache.inc');

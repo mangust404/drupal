@@ -64,6 +64,7 @@ function install_main() {
   // Check existing settings.php.
   $verify = install_verify_settings();
 
+  require_once './includes/cache/func-cache.inc';
   if ($verify) {
     // Since we have a database connection, we use the normal cache system.
     // This is important, as the installer calls into the Drupal system for

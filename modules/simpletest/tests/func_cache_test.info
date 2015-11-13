@@ -1,0 +1,6 @@
+name = "Func Cache Test"
+description = "Support module for function cache tests."
+package = Testing
+version = VERSION
+core = 6.x
+hidden = TRUE

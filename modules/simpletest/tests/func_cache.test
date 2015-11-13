@@ -1,0 +1,362 @@
+<?php
+
+class CacheFuncTestCase extends DrupalWebTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Test cache setters/getters functionality',
+      'description' => 'Test for func_cache_get(), func_cache_set() and func_clear_* methods.',
+      'group' => 'Cache',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('func_cache_test');
+  }  
+
+  /**
+   * Unit test for func_cache_get_cid()
+   */
+  function testCacheFuncCid() {
+    $samples = array(
+      'test' => array('test', NULL, array('args' => NULL)),
+
+      'test_123' => array('test', array('123'), array('args' => array('123'))),
+      'test' => array('test', array('123'), array('args' => NULL)),
+
+      'test_1_2' => array('test', array('1', '2'), array('args' => array('test', '!num'))),
+      'test' => array('test', array('1', '2'), array('args' => NULL)),
+
+      'test_1_2_3-4-5' => array('test', array('1', '2', array('3', '4', '5')), array('args' => array('test', '!arrays'))),
+      'test' => array('test', array('1', '2', array('3', '4', '5')), array('args' => NULL)),
+    );
+    foreach ($samples as $expected => $example) {
+      $this->assertEqual(call_user_func_array('func_cache_get_cid', $example), $expected);
+    }
+  }
+
+  /**
+   * Test func_get_cache().
+   */
+  function testBasicCacheFuncGet() {
+    global $test_data;
+    $test_data = $original_value = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $test_data, 'Cached result is correct.');
+    // Set a new value.
+    $test_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $original_value, 'Result was memoized and returned from cache.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func', rand()), $original_value, 'Cached result was not changed due function has no arguments support.');
+
+    $this->assertEqual(func_get_cache('unexisted_function'), NULL, 'Unknown cache setter function return NULL');
+  }
+
+  /**
+   * Test invoking of func_get_cache() with arguments.
+   */
+  function testArgumentsCacheFunc() {
+    global $test_data;
+    $test_data = $old_test_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $test_data . '_1', 'Correct result for argument #1');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '2'), $test_data . '_2', 'Correct result for argument #2');
+
+    $test_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $old_test_data . '_1', 'Result for argument #1 is memoized.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '2'), $old_test_data . '_2', 'Result for argument #1 is memoized.');
+
+    $random = $this->randomName();
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', $random), $test_data . '_' . $random, 'Random argument served correctly');
+  }
+
+  /**
+   * Test rebuild of cache entries with limited lifetime.
+   */
+  function testCacheFuncProcessLifetime() {
+    global $test_data;
+    // Prepare initial cache data.
+    $test_data = $original_data = rand();
+
+    func_get_cache('func_cache_test_setter_basic_func');
+
+    $test_data = rand();
+
+    // Run the cache rebuild process.
+    func_process_cache();
+
+    // Cache lifetime is 2 seconds and it should remains intact after cache processing.
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $original_data, 'Data was not changed yet.');
+
+    sleep(3);
+
+    func_process_cache();
+    drupal_static_reset('func_cache_get');
+
+    // After 3 seconds cache should be rebuilded.
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $test_data, 'Data was rebuilded.');
+  }
+
+  /**
+   * Test that permanent entries are not rebuilded on cache process.
+   */
+  function testCacheFuncProcessPermanent() {
+    global $test_data;
+    // Prepare initial cache data.
+    $test_data = $original_data = rand();
+
+    func_get_cache('func_cache_test_setter_simple_arguments', '1');
+
+    $test_data = rand();
+
+    // Run the cache rebuild process.
+    func_process_cache();
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $original_data . '_1', 'Data is permanent.');
+
+    sleep(3);
+
+    func_process_cache();
+    drupal_static_reset('func_cache_get');
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $original_data . '_1', 'Data is permanent.');
+
+  }
+  /**
+   * Test basic cache rebuild by func_clear_cache_func().
+   */
+  function testCacheFuncBasicRebuildFunc() {
+    global $test_data;
+    $test_data = $original_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $test_data, 'Cached result is correct.');
+    $test_data = rand();
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $original_data, 'Result not changed yet.');
+    func_clear_cache_func('func_cache_test_setter_basic_func');
+    $this->assertEqual($test_data, func_get_cache('func_cache_test_setter_basic_func'), 'Result rebuilded.');
+  }
+
+  /**
+   * Test rebuild of func with arguments by func_clear_cache_func().
+   */
+  function testCacheFuncArgumentsRebuildFunc() {
+    global $test_data;
+    $test_data = $original_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $test_data . '_1', 'Correct result for argument #1.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '2'), $test_data . '_2', 'Correct result for argument #2.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', 'unexisted'), $test_data . '_unexisted', 'Correct result for unexisted argument.');
+    $test_data = rand();
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $original_data . '_1', 'Result for argument #1 is memoized.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '2'), $original_data . '_2', 'Result for argument #2 is memoized.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', 'unexisted'), $original_data . '_unexisted', 'Result for unexisted argument is memoized.');
+
+    func_clear_cache_func('func_cache_test_setter_simple_arguments', '1');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $test_data . '_1', 'Correct new result for argument #1.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '2'), $original_data . '_2', 'Result for argument #2 is still memoized.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', 'unexisted'), $original_data . '_unexisted', 'Result for unexisted argument is still memoized.');
+
+    // Rebuild func cache for all defined arguments.
+    func_clear_cache_func('func_cache_test_setter_simple_arguments');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '1'), $test_data . '_1', 'Correct new result for argument #1.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', '2'), $test_data . '_2', 'Correct new result for argument #2.');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_simple_arguments', 'unexisted'), $original_data . '_unexisted', 'Result for unexisted argument is untouched.');
+  }
+
+  /**
+   * Test cache rebuild by func_clear_cache_bin().
+   */
+  function testCacheFuncRebuildBin() {
+    global $test_data;
+    $test_data = $original_data = rand();
+
+    // Test basic function without arguments.
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $test_data, 'Cached result is correct.');
+    $test_data = rand();
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $original_data, 'Result not changed yet.');
+    func_clear_cache_bin('cache_page');
+    $this->assertEqual(func_get_cache('func_cache_test_setter_basic_func'), $test_data, 'Result rebuilded.');
+  }
+
+  /**
+   * Test cache entries with basic tokens.
+   */
+  function testCacheFuncTokens() {
+    global $test_data;
+    $test_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func1', 9), $test_data . '_' . 9, 'Data is correct');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func1', 8), $test_data . '_' . 8, 'Data is correct');
+
+    // Rebuild single token value.
+    $prev_data = $test_data;
+    $test_data = rand();
+    func_clear_cache_func('func_cache_test_token_func1', 9);
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func1', 9), $test_data . '_' . 9, 'Data is correct');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func1', 8), $prev_data . '_' . 8, 'Data is untouched');
+
+    // Rebuild all tokens.
+    $test_data = rand();
+    func_clear_cache_func('func_cache_test_token_func1');
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func1', 9), $test_data . '_' . 9, 'Data was changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func1', 8), $test_data . '_' . 8, 'Data was changed.');
+  }
+
+  /**
+   * Test functions cache for tokens combined with arguments.
+   */
+  function testCacheFuncTokensArgs() {
+    global $test_data;
+    $test_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 9), $test_data . '_1_' . 9);
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 9), $test_data . '_2_' . 9);
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 8), $test_data . '_1_' . 8);
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 8), $test_data . '_2_' . 8);
+
+    // Rebuild by first argument.
+    $prev_data = $test_data;
+    $test_data = rand();
+    func_clear_cache_func('func_cache_test_token_func2', 1);
+
+    // Only entries with first argument = 1 should be rebuilded.
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 9), $test_data . '_1_' . 9, 'Data changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 8), $test_data . '_1_' . 8, 'Data changed');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 9), $prev_data . '_2_' . 9, 'Data was not changed');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 8), $prev_data . '_2_' . 8, 'Data was not changed');
+
+    // Rebuild all tokens.
+    $test_data = rand();
+    func_clear_cache_func('func_cache_test_token_func2');
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 9), $test_data . '_1_' . 9);
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 8), $test_data . '_1_' . 8);
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 9), $test_data . '_2_' . 9);
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 8), $test_data . '_2_' . 8);
+  }
+
+  /**
+   * Test cache entries with basic tokens.
+   */
+  function testCacheFuncTokensProcess() {
+    global $test_data;
+    $test_data = rand();
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 9), $test_data . '_1_' . 9);
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 8), $test_data . '_2_' . 8);
+
+    // Rebuild by first argument.
+    $prev_data = $test_data;
+    $test_data = rand();
+
+    func_process_cache('cache_form');
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 9), $prev_data . '_1_' . 9, 'Was not rebuilded yet.');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 8), $prev_data . '_2_' . 8, 'Was not rebuilded yet.');
+
+    sleep(3);
+    func_process_cache('cache_form');
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 1, 9), $test_data . '_1_' . 9, 'Data was rebuilded.');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func2', 2, 8), $test_data . '_2_' . 8, 'Data was rebuilded.');
+  }
+
+  /**
+   * Test more complex arguments and tokens combinations.
+   */
+  function testCacheFuncTokensCombinedArgs() {
+    global $test_data;
+    $test_data = rand();
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 1, 9, 0), $test_data . '_1_9_0');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 1, 9, 1), $test_data . '_1_9_1');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 2, 9, 0), $test_data . '_2_9_0');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 2, 9, 1), $test_data . '_2_9_1');
+
+    $prev_data = $test_data;
+    $test_data = rand();
+    func_clear_cache_func('func_cache_test_token_func3', 1, 9);
+
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 1, 9, 0), $test_data . '_1_9_0', 'Data was changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 1, 9, 1), $test_data . '_1_9_1', 'Data was changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 2, 9, 0), $prev_data . '_2_9_0', 'Data was not changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_token_func3', 2, 9, 1), $prev_data . '_2_9_1', 'Data was not changed.');
+  }
+
+  /**
+   * Unit test for func_cache_get_arguments().
+   */
+  function testCacheGetArguments() {
+    $data = func_cache_get_arguments(array('!test'));
+    $this->assertEqual($data, array(array(9), array(8)), 'Correct results for token !test');
+
+    $data = func_cache_get_arguments(array('!test1'));
+    $this->assertEqual($data, array(array(1), array(2), array(3)), 'Correct results for token !test1');
+
+    $data = func_cache_get_arguments(array(array(1, 2, 3)));
+    $this->assertEqual($data, array(array(1), array(2), array(3)), 'Correct results for token [1, 2, 3]');
+
+    $data = func_cache_get_arguments(array('!test', '!test1'));
+
+    $this->assertEqual($data, array(
+        0 => array(9, 1), 
+        1 => array(9, 2), 
+        2 => array(9, 3), 
+        3 => array(8, 1), 
+        4 => array(8, 2), 
+        5 => array(8, 3),
+        ), 'Correct results for complex token [!test, !test1]');
+
+    $data = func_cache_get_arguments(array(array('var1', 'var2'), '!test', '!test1'));
+
+    $this->assertEqual($data, array(
+        array('var1', 9, 1),
+        array('var1', 9, 2),
+        array('var1', 9, 3),
+        array('var1', 8, 1),
+        array('var1', 8, 2),
+        array('var1', 8, 3),
+        array('var2', 9, 1),
+        array('var2', 9, 2),
+        array('var2', 9, 3),
+        array('var2', 8, 1),
+        array('var2', 8, 2),
+        array('var2', 8, 3),
+    ), 'Правильные результаты для complex token [[1, !test, !test1], [2, !test, !test1]]');
+
+    $data = func_cache_get_arguments(array(array(1, 2), '!test', array(0, 1)));
+    $this->assertEqual($data, array(
+      array(1, 9, 0),
+      array(1, 9, 1),
+      array(1, 8, 0),
+      array(1, 8, 1),
+      array(2, 9, 0),
+      array(2, 9, 1),
+      array(2, 8, 0),
+      array(2, 8, 1),
+    ), 'Правильные результаты для complex token [[1, 2], !test, [0, 1]]');
+
+    $data = func_cache_get_arguments(array('!test_array'));
+    $this->assertEqual($data, array(
+      array(array(1, 2)),
+      array(array(2, 3)),
+      array(array(3, 4)),
+    ), 'Правильные результаты для array token [!test_array]');
+
+
+    $data = func_cache_get_arguments(array('!test_array', '!test'));
+    $this->assertEqual($data, array(
+      array(array(1, 2), 9),
+      array(array(1, 2), 8),
+      array(array(2, 3), 9),
+      array(array(2, 3), 8),
+      array(array(3, 4), 9),
+      array(array(3, 4), 8),
+    ), 'Правильные результаты для array token [!test_array, !test]');
+
+  }  
+}
+
+?>
