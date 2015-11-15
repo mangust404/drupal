@@ -2429,6 +2429,11 @@ function system_cache_setters() {
     '_language_list' => array(
       'bin' => 'cache_bootstrap',
     ),
+    '_menu_get_items' => array(
+      'bin' => 'cache_menu',
+      'lifetime' => 0,
+      'args' => array('!menu_ancestor'),
+    ),
   );
 }
 
@@ -2444,6 +2449,7 @@ function system_cache_tokens($op, $token = NULL) {
         '!theme' => 'List of enabled themes machine names',
         '!system_object_type' => 'List of available system object types. Default is "module" and "theme".',
         '!langcode' => 'List of langcodes for enabled languages',
+        '!menu_ancestor' => 'All menu router first-level items like "admin" or "user"',
       );
     case 'view':
       switch($token) {
@@ -2482,6 +2488,17 @@ function system_cache_tokens($op, $token = NULL) {
             $langcodes[] = '';
           }
           return $langcodes;
+        case '!menu_ancestor':
+          $ancestors = array();
+          $r = db_query("SELECT path FROM {menu_router}");
+          while ($ar = db_fetch_array($r)) {
+            $array = explode('/', $ar['path']);
+            if (!in_array($array[0], $ancestors)) {
+              $ancestors[] = $array[0];
+            }
+          }
+          return $ancestors;
+          break;
       }
       break;
   }

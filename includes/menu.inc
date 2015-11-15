@@ -315,7 +315,24 @@ function menu_get_item($path = NULL, $router_item = NULL) {
     $parts = array_slice($original_map, 0, MENU_MAX_PARTS);
     list($ancestors, $placeholders) = menu_get_ancestors($parts);
 
-    if ($router_item = db_fetch_array(db_query_range('SELECT * FROM {menu_router} WHERE path IN ('. implode (',', $placeholders) .') ORDER BY fit DESC', $ancestors, 0, 1))) {
+    // Find a smallest ancestor, it will be a cache id
+    end($ancestors);
+    $root_ancestor = current($ancestors);
+
+    $router_item = NULL;
+    
+    $cached_router_items = func_get_cache_bootstrap('_menu_get_items', $root_ancestor);
+
+    foreach($cached_router_items as $path => $_router_item) {
+      foreach($ancestors as $ancestor) {
+        if($path == $ancestor) {
+          $router_item = $_router_item;
+          break(2);
+        }
+      }
+    }
+
+    if ($router_item) {
       $map = _menu_translate($router_item, $original_map);
       if ($map === FALSE) {
         $router_items[$path] = FALSE;
@@ -329,6 +346,35 @@ function menu_get_item($path = NULL, $router_item = NULL) {
     $router_items[$path] = $router_item;
   }
   return $router_items[$path];
+}
+
+/**
+ * Get a bunch of router items by specified root.
+ * Memoize helper for menu_get_items().
+ * 
+ * Fore example if "node" was given then all of these items will be returned:
+ *   node/%/delete
+ *   node/%/edit 
+ *   node/%
+ *   node
+ *   etc...
+ * All elements are sorted by ther length from longest to shortest
+ *
+ * @param $ancestor string
+ *   Top menu path, e.g. "admin", "node", "user"
+ * @return array
+ *   Assoc array of all menu router subitems, e.g. router items "admin/config", "admin/build", etc..
+ *   Keys are router item paths.
+ * @see menu_get_items()
+ */
+function _menu_get_items($ancestor) {
+  $router_items = array();
+  $r = db_query("SELECT * FROM {menu_router} WHERE path = '%s' OR path LIKE '%s/%%' ORDER BY fit DESC", $ancestor, $ancestor);
+  while($ar = db_fetch_array($r)) {
+    $router_items[$ar['path']] = $ar;
+  }
+
+  return $router_items;
 }
 
 /**
@@ -1371,13 +1417,24 @@ function menu_local_tasks($level = 0, $return_root = FALSE) {
       return '';
     }
     // Get all tabs and the root page.
-    $result = db_query("SELECT * FROM {menu_router} WHERE tab_root = '%s' ORDER BY weight, title", $router_item['tab_root']);
     $map = arg();
     $children = array();
     $tasks = array();
     $root_path = $router_item['path'];
 
-    while ($item = db_fetch_array($result)) {
+    $__items = array();
+
+    /// Get a bunch of menu elements and find those which tab_root is equal to current router_item
+    $descendants = func_get_cache_bootstrap('_menu_get_items', arg(0));
+    foreach($descendants as $path => $item) {
+      if($item['tab_root'] == $router_item['tab_root']) {
+        $__items[] = $item;
+      }
+    }
+    uasort($__items, 'menu_item_sort');
+
+    // Process items
+    foreach($__items as $item) {
       _menu_translate($item, $map, TRUE);
       if ($item['tab_parent']) {
         // All tabs, but not the root page.
@@ -1475,6 +1532,21 @@ function menu_local_tasks($level = 0, $return_root = FALSE) {
     // We do not display single tabs.
     return (isset($tabs[$level]) && $tabs[$level]['count'] > 1) ? $tabs[$level]['output'] : '';
   }
+}
+
+/**
+ * Sort callback helper for menu items.
+ * Sort by weight ascendant order.
+ *
+ * @param $a array
+ * @param $b array
+ * @return int
+ */
+function menu_item_sort($a, $b) {
+  if ($a['weight'] == $b['weight']) {
+    return 0;
+  }
+  return ($a['weight'] < $b['weight']) ? -1 : 1;
 }
 
 /**
@@ -1725,6 +1797,9 @@ function menu_cache_clear($menu_name = 'navigation') {
 
   // Also clear the menu system static caches.
   menu_reset_static_cache();
+
+  // Rebuild memoized results.
+  func_clear_cache_func_bootstrap('cache_menu');
 }
 
 /**
@@ -1733,6 +1808,8 @@ function menu_cache_clear($menu_name = 'navigation') {
  */
 function menu_cache_clear_all() {
   cache_clear_all('*', 'cache_menu', TRUE);
+  // Rebuild memoized results.
+  func_clear_cache_func_bootstrap('cache_menu');
 }
 
 /**
