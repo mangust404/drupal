@@ -54,8 +54,8 @@ for ($i = 1; $i < $argc; $i++) {
   }
   else if (!in_array($argv[$i], $configure_params)) {
     $configure_params[] = $argv[$i];
-    if (strpos($argv[$i], '--name') !== FALSE || strpos($argv[$i], '--class') !== FALSE) {
-      // If one of --name or --class parameters specified then we should remove '--all'.
+    if (strpos($argv[$i], '--name') !== FALSE || strpos($argv[$i], '--class') !== FALSE || strpos($argv[$i], '--file') !== FALSE) {
+      // If one of --name, --class or --file parameters specified then we should remove '--all'.
       $all_index = array_search('--all', $configure_params);
       if ($all_index !== FALSE) {
         unset($configure_params[$all_index]);
