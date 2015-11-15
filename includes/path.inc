@@ -45,30 +45,30 @@ function drupal_init_path() {
 function drupal_lookup_path($action, $path = '', $path_language = '') {
   global $language;
   // $map is an array with language keys, holding arrays of Drupal paths to alias relations
-  static $map = array(), $no_src = array(), $count;
+  $map = &drupal_static(__FUNCTION__ . ':map', array());
+  $no_src = &drupal_static(__FUNCTION__ . ':no_src', array());
 
   $path_language = $path_language ? $path_language : $language->language;
 
   if (!function_exists('db_query')) return;
-  // Use $count to avoid looking up paths in subsequent calls if there simply are no aliases
-  if (!isset($count)) {
-    $count = db_result(db_query('SELECT COUNT(pid) FROM {url_alias}'));
-  }
 
   if ($action == 'wipe') {
-    $map = array();
-    $no_src = array();
-    $count = NULL;
+    $map = NULL;
+    $no_src = NULL;
+    func_clear_cache_func_bootstrap('_drupal_lookup_path');
   }
-  elseif ($count > 0 && $path != '') {
+  elseif ($path != '') {
+    if (empty($map[$path_language])) {
+      $map[$path_language] = func_get_cache_bootstrap('_drupal_lookup_path', $path_language);
+    }
+    if (!count($map[$path_language])) {
+      // Avoid looking up paths in subsequent calls if there simply are no aliases.
+      return;
+    }
     if ($action == 'alias') {
       if (isset($map[$path_language][$path])) {
         return $map[$path_language][$path];
       }
-      // Get the most fitting result falling back with alias without language
-      $alias = db_result(db_query("SELECT dst FROM {url_alias} WHERE src = '%s' AND language IN('%s', '') ORDER BY language DESC, pid DESC", $path, $path_language));
-      $map[$path_language][$path] = $alias;
-      return $alias;
     }
     // Check $no_src for this $path in case we've already determined that there
     // isn't a path that has this alias
@@ -76,22 +76,35 @@ function drupal_lookup_path($action, $path = '', $path_language = '') {
       // Look for the value $path within the cached $map
       $src = FALSE;
       if (!isset($map[$path_language]) || !($src = array_search($path, $map[$path_language]))) {
-        // Get the most fitting result falling back with alias without language
-        if ($src = db_result(db_query("SELECT src FROM {url_alias} WHERE dst = '%s' AND language IN('%s', '') ORDER BY language DESC, pid DESC", $path, $path_language))) {
-          $map[$path_language][$src] = $path;
-        }
-        else {
-          // We can't record anything into $map because we do not have a valid
-          // index and there is no need because we have not learned anything
-          // about any Drupal path. Thus cache to $no_src.
-          $no_src[$path_language][$path] = TRUE;
-        }
+        // We can't record anything into $map because we do not have a valid
+        // index and there is no need because we have not learned anything
+        // about any Drupal path. Thus cache to $no_src.
+        $no_src[$path_language][$path] = TRUE;
       }
       return $src;
     }
   }
 
   return FALSE;
+}
+
+/**
+ * Memoize helper for drupal_lookup_path().
+ *
+ * @return array
+ *   Associative array with path src as keys and dst as values.
+ * @see drupal_lookup_path()
+ */
+function _drupal_lookup_path($langcode) {
+  $paths = array();
+  $result = db_query("SELECT src, dst FROM {url_alias} WHERE language IN('%s', '') ORDER BY language DESC, pid DESC", $langcode);
+  while ($alias = db_fetch_array($result)) {
+    // Add only first occurance. Priority to language-specific and later added aliases.
+    if (!isset($paths[$alias['src']])) {
+      $paths[$alias['src']] = $alias['dst'];
+    }
+  }
+  return $paths;
 }
 
 /**

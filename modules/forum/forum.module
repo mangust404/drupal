@@ -230,6 +230,10 @@ function forum_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         $vocabulary = $vid;
         $containers = variable_get('forum_containers', array());
         foreach ($node->taxonomy as $term) {
+          if (!$term) {
+            form_set_error('taxonomy_forums', t('Select a forum.'));
+            continue;
+          }
           if (db_result(db_query('SELECT COUNT(*) FROM {term_data} WHERE tid = %d AND vid = %d', $term, $vocabulary))) {
             if (in_array($term, $containers)) {
               $term = taxonomy_get_term($term);

@@ -245,6 +245,8 @@ class UrlAlterFunctionalTest extends DrupalPathWebTestCase {
    *   TRUE if $original was correctly altered to $final, FALSE otherwise.
    */
   protected function assertUrlInboundAlter($original, $final) {
+    drupal_static_reset('drupal_lookup_path:map');
+    func_clear_cache_func_bootstrap('_drupal_lookup_path');
     // Test inbound altering.
     $result = drupal_get_normal_path($original);
     $this->assertIdentical($result, $final, format_string('Altered inbound URL %original, expected %final, and got %result.', array('%original' => $original, '%final' => $final, '%result' => $result)));

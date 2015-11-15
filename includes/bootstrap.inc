@@ -679,7 +679,7 @@ function drupal_get_filename($type, $name, $filename = NULL) {
   // the database.  This is required because this function is called both
   // before we have a database connection (i.e. during installation) and
   // when a database connection fails.
-  elseif (db_is_active() && (($file = db_result(db_query("SELECT filename FROM {system} WHERE name = '%s' AND type = '%s'", $name, $type))) && file_exists($file))) {
+  elseif (db_is_active() && (($filenames = func_get_cache_bootstrap('drupal_get_filenames', $type)) && isset($filenames[$name]) && ($file = $filenames[$name]) && file_exists($file))) {
     $files[$type][$name] = $file;
   }
   else {
@@ -710,6 +710,23 @@ function drupal_get_filename($type, $name, $filename = NULL) {
   if (isset($files[$type][$name])) {
     return $files[$type][$name];
   }
+}
+
+/**
+ * Get all filenames by type from database. Memoized function.
+ *
+ * @param $type string
+ *   File type, e.g. "module", "theme"
+ * @return array
+ *   Assoc array containing all filenames as values and names as keys.
+ */
+function drupal_get_filenames($type) {
+  $filenames = array();
+  $result = db_query("SELECT filename, name FROM {system} WHERE type = '%s'", $type);
+  while($item = db_fetch_array($result)) {
+    $filenames[$item['name']] = $item['filename'];
+  }
+  return $filenames;
 }
 
 /**
@@ -1516,6 +1533,29 @@ function drupal_set_title($title = NULL) {
 }
 
 /**
+ * Test all patterns to match a provided string.
+ * The function emulates database LIKE operator.
+ *
+ * @param $patterns array
+ *   Array of patterns to match. In pattern: '_' matches any character, 
+ *   '%' matches any number of characters.
+ * @param $string string
+ *   The string that will be tested against all patterns.
+ * @return bool
+ *   TRUE if one of patterns is matches the string. FALSE if it's not.
+ */
+function drupal_patterns_match_string(array $patterns, $string) {
+  $result = array();
+  foreach ($patterns as $pattern) {
+    $regex = '/^' . str_replace(array('%', '_'), array('(.*?)', '(.{1}?)'), preg_quote($pattern)) .  '$/s';
+    if (preg_match($regex, $string)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
  * Perform an access check for a given mask and rule type. Rules are usually
  * created via admin/user/rules page.
  *
@@ -1539,8 +1579,31 @@ function drupal_is_denied($type, $mask) {
   // We deny access if the only matching records in the {access} table have
   // status 0 (deny). If any have status 1 (allow), or if there are no
   // matching records, we allow access.
-  $sql = "SELECT 1 FROM {access} WHERE type = '%s' AND LOWER('%s') LIKE LOWER(mask) AND status = %d";
-  return db_result(db_query_range($sql, $type, $mask, 0, 0, 1)) && !db_result(db_query_range($sql, $type, $mask, 1, 0, 1));
+  return drupal_patterns_match_string(func_get_cache_bootstrap('_drupal_is_denied', $type, 0), $mask) &&
+         !drupal_patterns_match_string(func_get_cache_bootstrap('_drupal_is_denied', $type, 1), $mask);
+}
+
+/**
+ * Memoize helper for drupal_is_denied().
+ * All access rules are stored in cache separated by type and status.
+ * 
+ * @param $type string
+ *   Access type specified by !access_type token.
+ * @param $status bool
+ *   Deny (0) or allow (1) access.
+ *
+ * @return array
+ *   All access patterns by the $type and status.
+ * @see user_cache_setters()
+ */
+function _drupal_is_denied($type, $status) {
+  $rules = array();
+  $sql = "SELECT * FROM {access} WHERE type = '%s' AND status = %d";
+  $result = db_query($sql, $type, $status);
+  while ($rule = db_fetch_array($result)) {
+    $rules[] = $rule['mask'];
+  }
+  return $rules;
 }
 
 /**
@@ -1865,15 +1928,13 @@ function language_list($field = 'language', $reset = FALSE) {
   // Reset language list
   if ($reset) {
     $languages = NULL;
+    func_clear_cache_func_bootstrap('_language_list');
   }
 
   // Init language list
   if (!isset($languages)) {
     if (variable_get('language_count', 1) > 1 || module_exists('locale')) {
-      $result = db_query('SELECT * FROM {languages} ORDER BY weight ASC, name ASC');
-      while ($row = db_fetch_object($result)) {
-        $languages['language'][$row->language] = $row;
-      }
+      $languages = func_get_cache_bootstrap('_language_list');
     }
     else {
       // No locale module, so use the default language only.
@@ -1896,6 +1957,24 @@ function language_list($field = 'language', $reset = FALSE) {
     }
   }
   return $languages[$field];
+}
+
+/**
+ * Memoized helper for language_list()
+ *
+ * @return array
+ *   list of all languages
+ * @see language_list
+ */
+function _language_list() {
+  $languages = array();
+  if (module_exists('locale')) {
+    $result = db_query('SELECT * FROM {languages} ORDER BY weight ASC, name ASC');
+    while ($row = db_fetch_object($result)) {
+      $languages['language'][$row->language] = $row;
+    }
+  }
+  return $languages;
 }
 
 /**

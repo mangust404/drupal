@@ -2862,3 +2862,81 @@ function user_login_destination() {
 function user_delete_access($account) {
   return user_access('administer users') && $account->uid > 0;
 }
+
+/**
+ * Implementation of hook_cache_setters().
+ *
+ */
+function user_cache_setters() {
+  return array(
+    '_drupal_is_denied' => array(
+      'bin' => 'cache_bootstrap',
+      'args' => array(
+        '!access_type', // All defined access types. Default types: 'name', 'mail', 'host'.
+        array(0, 1) // Whether rule is to allow(1) or deny(0) access.
+      ),
+      'title' => 'User access restriction rules',
+      'description' => 'All access restriction rules separated by type (ip, user name and host)',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_cache_tokens().
+ *
+ */
+function user_cache_tokens($op, $token = NULL) {
+  switch($op) {
+    case 'list':
+      return array(
+        '!unique_rids' => 'Unique users roles lists', 
+        '!uid' => 'All active users IDs',
+        '!access_type' => 'Access type for {access} database',
+      );
+      break;
+    case 'view':
+      switch ($token) {
+        case '!unique_rids':
+          // Get all unique combinations of rids.
+          $rids = array();
+
+          /// Select all users who have a roles in {users_roles} table.
+          $r = db_query("SELECT DISTINCT(uid) as uid FROM {users_roles}");
+          while ($ar = db_fetch_array($r)) {
+            $user = user_load($ar['uid']);
+
+            $roles = array_keys($user->roles);
+            asort($roles);
+            $roles_string = implode(',', $roles);
+            if(!isset($rids[$roles_string])) {
+              // Add a distinct roles sets
+              $rids[$roles_string] = $roles;
+            }
+          }
+
+          if (!isset($rids[DRUPAL_AUTHENTICATED_RID])) {
+            $rids[DRUPAL_AUTHENTICATED_RID] = array(DRUPAL_AUTHENTICATED_RID);
+          }
+          if (!isset($rids[DRUPAL_ANONYMOUS_RID])) {
+            $rids[DRUPAL_ANONYMOUS_RID] = array(DRUPAL_ANONYMOUS_RID);
+          }
+          return array_values($rids);
+          break;
+        case '!access_type':
+          $access_types = array();
+          // Access database may contain some extra types.
+          $types_result = db_query("SELECT DISTINCT(type) AS type FROM {access}");
+          while ($ar = db_fetch_array($types_result)) {
+            $access_types[] = $ar['type'];
+          }
+          // Ensure that default system types are in the list.
+          foreach (array('name', 'mail', 'host') as $system_type) {
+            if (!in_array($system_type, $access_types)) {
+              $access_types[] = $system_type;
+            }
+          }
+          break;
+      }
+      break;
+  }
+}

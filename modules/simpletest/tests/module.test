@@ -41,6 +41,7 @@ class ModuleUnitTest extends DrupalWebTestCase {
     // Try to mess with the module weights.
     db_query("UPDATE {system} SET weight = 20 WHERE name = 'color' AND type = 'module'");
     // Reset the module list.
+    func_clear_cache_func_bootstrap('_module_list');
     module_list(TRUE, FALSE);
     // Move color to the end of the array.
     unset($module_list[array_search('color', $module_list)]);
@@ -57,6 +58,7 @@ class ModuleUnitTest extends DrupalWebTestCase {
     $this->assertModuleList($new_module_list, t('When using a fixed list'));
 
     // Reset the module list.
+    func_clear_cache_func_bootstrap('_module_list');
     module_list(TRUE, FALSE);
     $this->assertModuleList($module_list, t('After reset'));
   }
@@ -313,6 +315,7 @@ class ModuleUninstallTestCase extends DrupalWebTestCase {
     // Uninstall book module
     $this->drupalPost('admin/build/modules', array('status[book]' => FALSE), t('Save configuration'));
 
+    func_clear_cache_func_bootstrap('_module_list');
     module_list(TRUE, FALSE);
     $this->assertFalse(module_exists('book'), 'Book module is disabled');
     $this->assertTrue(db_table_exists('book'), 'Book table exists in database');
@@ -326,10 +329,9 @@ class ModuleUninstallTestCase extends DrupalWebTestCase {
 
     $this->assertText('The selected modules have been uninstalled.');
 
+    func_clear_cache_func_bootstrap('_module_list');
+    module_list(TRUE, FALSE);
     $this->assertFalse(module_exists('book'), 'Book module is disabled');
     $this->assertFalse(db_table_exists('book'), 'Book table doesn\'t exists in database');
-
-    // Bring back book module so simpletest can correctly cleanup test environment.
-    module_enable(array('book'));
   }
 }

@@ -12,6 +12,8 @@ function locale_install() {
   drupal_install_schema('locale');
 
   db_query("INSERT INTO {languages} (language, name, native, direction, enabled, weight, javascript) VALUES ('en', 'English', 'English', '0', '1', '0', '')");
+
+  func_clear_cache_func('_language_list');
 }
 
 /**

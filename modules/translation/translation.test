@@ -263,6 +263,7 @@ class TranslationTestCase extends DrupalWebTestCase {
    */
   function resetCaches() {
     drupal_static_reset('language_url_rewrite');
+    func_clear_cache_func_bootstrap('_language_list');
     drupal_static_reset('language_list');
   }
 
@@ -296,6 +297,7 @@ class TranslationTestCase extends DrupalWebTestCase {
       $this->drupalPost('admin/settings/language/add', $edit, t('Add language'));
 
       // Make sure we are not using a stale list.
+      func_clear_cache_func_bootstrap('_language_list');
       drupal_static_reset('language_list');
       $languages = language_list('language');
       $this->assertTrue(array_key_exists($language_code, $languages), 'Language was installed successfully.');

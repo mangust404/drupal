@@ -1507,6 +1507,11 @@ class DrupalWebTestCase extends DrupalTestCase {
 //      file_unmanaged_delete_recursive(file_directory_path());
       simpletest_clean_temporary_directory(file_directory_path());
 
+      // Include all enabled modules .install so drupal_get_schema() will be able
+      // to get all active modules schema.
+      foreach(module_list(TRUE, FALSE) as $module) {
+        module_load_include('install', $module, $module);
+      }
       // Reset module_implements() internal cache otherwise modules which was being
       // uninstalled during tests will throw errors about unexisting tables.
       module_implements('', FALSE, TRUE);

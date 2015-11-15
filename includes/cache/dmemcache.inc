@@ -469,19 +469,19 @@ function dmemcache_object($bin = NULL, $flush = FALSE) {
   return empty($memcacheCache[$bin]) ? FALSE : $memcacheCache[$bin];
 }
 
-function dmemcache_key($key = '', $bin = 'cache', $reset = FALSE) {
+function dmemcache_key($key = '', $bin = 'cache') {
   $prefix = drupal_static(__FUNCTION__, NULL);
   if (!isset($prefix)) {
     $prefix = '';
-    // memcache_key_prefix can be set in settings.php to support site namespaces
+    // cache_key_prefix can be set in settings.php to support site namespaces
     // in a multisite environment.
-    if ($prefix = variable_get('memcache_key_prefix', '')) {
+    if ($prefix = variable_get('cache_key_prefix', '')) {
       $prefix .= '-';
     }
     // When simpletest is running, emulate the simpletest database prefix here
     // to avoid the child site setting cache entries in the parent site.
     if (isset($GLOBALS['drupal_test_info']['test_run_id'])) {
-      $prefix .= $GLOBALS['drupal_test_info']['test_run_id'];
+      $prefix .= $GLOBALS['drupal_test_info']['test_run_id'] . '-';
     }
   }
   $full_key = urlencode($prefix . $bin . '-' . $key);

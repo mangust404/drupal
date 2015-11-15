@@ -147,9 +147,10 @@ class LocaleConfigurationTest extends DrupalWebTestCase {
     $this->drupalGet('admin/settings/language/delete/' . $langcode);
     $this->assertResponse(404, 'Language no longer found.');
     // Make sure the "language_count" variable has been updated correctly.
+    func_clear_cache_func_bootstrap('_language_list');
     drupal_static_reset('language_list');
     $enabled = language_list('enabled');
-    $this->assertEqual(variable_get('language_count', 1), count($enabled[1]), 'Language count is correct.');
+    $this->assertEqual(count($enabled[1]), variable_get('language_count', 1), 'Language count is correct.');
     // Delete a disabled language.
     // Disable an enabled language.
     $edit = array(
@@ -158,6 +159,7 @@ class LocaleConfigurationTest extends DrupalWebTestCase {
     $this->drupalPost($path, $edit, t('Save configuration'));
     $this->assertNoFieldChecked('edit-enabled-fr', 'French language disabled.');
     // Get the count of enabled languages.
+    func_clear_cache_func_bootstrap('_language_list');
     drupal_static_reset('language_list');
     $enabled = language_list('enabled');
     // Delete the disabled language.
@@ -453,6 +455,7 @@ class LocaleTranslationFunctionalTest extends DrupalWebTestCase {
       'direction' => '0',
     );
     $this->drupalPost('admin/settings/language/add', $edit, t('Add custom language'));
+    func_clear_cache_func_bootstrap('_language_list');
     drupal_static_reset('language_list');
 
     require_once DRUPAL_ROOT . '/includes/locale.inc';
@@ -2701,6 +2704,7 @@ class LocaleUrlRewritingTest extends DrupalWebTestCase {
     $this->drupalPost('admin/settings/language/configure', $edit, t('Save settings'));
 
     // Reset static caching.
+    func_clear_cache_func_bootstrap('_language_list');
     drupal_static_reset('language_list');
     drupal_static_reset('language_url_rewrite');
   }

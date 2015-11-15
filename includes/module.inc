@@ -57,13 +57,7 @@ function module_list($refresh = FALSE, $bootstrap = TRUE, $sort = FALSE, $fixed_
       }
     }
     else {
-      if ($bootstrap) {
-        $result = db_query("SELECT name, filename, throttle FROM {system} WHERE type = 'module' AND status = 1 AND bootstrap = 1 ORDER BY weight ASC, filename ASC");
-      }
-      else {
-        $result = db_query("SELECT name, filename, throttle FROM {system} WHERE type = 'module' AND status = 1 ORDER BY weight ASC, filename ASC");
-      }
-      while ($module = db_fetch_object($result)) {
+      foreach (func_get_cache_bootstrap('_module_list', $bootstrap? 1: 0) as $module) {
         if (file_exists($module->filename)) {
           // Determine the current throttle status and see if the module should be
           // loaded based on server load. We have to directly access the throttle
@@ -85,6 +79,31 @@ function module_list($refresh = FALSE, $bootstrap = TRUE, $sort = FALSE, $fixed_
     return $sorted_list;
   }
   return $list;
+}
+
+/**
+ * Return modules list from database.
+ * Memoize helper for module_list().
+ *
+ * @param bool
+ *   TRUE is for return only enabled bootstrap modules. FALSE to get all enabled modules.
+ * @return array
+ *   Array of object of all enabled modules.
+ */
+function _module_list($bootstrap) {
+  if ($bootstrap) {
+    $result = db_query("SELECT name, filename, throttle FROM {system} WHERE type = 'module' AND status = 1 AND bootstrap = 1 ORDER BY weight ASC, filename ASC");
+  }
+  else {
+    $result = db_query("SELECT name, filename, throttle FROM {system} WHERE type = 'module' AND status = 1 ORDER BY weight ASC, filename ASC");
+  }
+
+  $modules = array();
+  while ($module = db_fetch_object($result)) {
+    $modules[] = $module;
+  }
+
+  return $modules;
 }
 
 /**
@@ -221,6 +240,10 @@ function system_list_reset() {
   system_theme_data();
   cache_clear_all('bootstrap_modules', 'cache');
   cache_clear_all('system_list', 'cache');
+  drupal_static_reset('func_get_setters_bootstrap');
+  drupal_static_reset('func_get_cache_bootstrap');
+  func_clear_cache_func_bootstrap('_module_list');
+  func_clear_cache_func_bootstrap('system_region_list');
 }
 
 /**
@@ -618,13 +641,15 @@ function module_disable($module_list, $disable_dependents = TRUE) {
     _system_update_bootstrap_status();
     // Update the theme registry to remove the newly-disabled module.
     drupal_theme_rebuild();
+
   }
 
   // If there remains no more node_access module, rebuilding will be
   // straightforward, we can do it right now.
   if (node_access_needs_rebuild() && count(module_implements('node_grants')) == 0) {
     node_access_rebuild();
-  }}
+  }
+}
 
 /**
  * @defgroup hooks Hooks

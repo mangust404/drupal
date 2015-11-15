@@ -344,6 +344,7 @@ class PathLanguageTestCase extends DrupalWebTestCase {
     // Confirm that the alias is returned by url().
     drupal_static_reset('language_list');
     drupal_static_reset('language_url_rewrite');
+    func_clear_cache_func_bootstrap('_language_list');
     $languages = language_list();
     $url = url('node/' . $french_node->nid, array('language' => $languages[$french_node->language]));
     $this->assertTrue(strpos($url, $edit['path']), 'URL contains the path alias.');

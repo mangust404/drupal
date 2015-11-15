@@ -35,7 +35,7 @@ function block_admin_display_form(&$form_state, $blocks, $theme = NULL) {
   init_theme();
 
   $throttle = module_exists('throttle');
-  $block_regions = system_region_list($theme_key) + array(BLOCK_REGION_NONE => '<'. t('none') .'>');
+  $block_regions = func_get_cache_bootstrap('system_region_list', $theme_key) + array(BLOCK_REGION_NONE => '<'. t('none') .'>');
 
   // Weights range from -delta to +delta, so delta should be at least half
   // of the amount of blocks present. This makes sure all blocks in the same
@@ -104,6 +104,7 @@ function block_admin_display_form_submit($form, &$form_state) {
   }
   drupal_set_message(t('The block settings have been updated.'));
   cache_clear_all();
+  func_clear_cache_bin('cache_block');
 }
 
 /**
@@ -118,7 +119,7 @@ function _block_compare($a, $b) {
 
   // We need the region list to correctly order by region.
   if (!isset($regions)) {
-    $regions = array_flip(array_keys(system_region_list($theme_key)));
+    $regions = array_flip(array_keys(func_get_cache_bootstrap('system_region_list', $theme_key)));
     $regions[BLOCK_REGION_NONE] = count($regions);
   }
 
@@ -280,6 +281,7 @@ function block_admin_configure_submit($form, &$form_state) {
     module_invoke($form_state['values']['module'], 'block', 'save', $form_state['values']['delta'], $form_state['values']);
     drupal_set_message(t('The block configuration has been saved.'));
     cache_clear_all();
+    func_clear_cache_bin('cache_block');
     $form_state['redirect'] = 'admin/build/block';
     return;
   }
@@ -317,6 +319,7 @@ function block_add_block_form_submit($form, &$form_state) {
 
   drupal_set_message(t('The block has been created.'));
   cache_clear_all();
+  func_clear_cache_bin('cache_block');
 
   $form_state['redirect'] = 'admin/build/block';
   return;
@@ -342,6 +345,7 @@ function block_box_delete_submit($form, &$form_state) {
   db_query("DELETE FROM {blocks_roles} WHERE module = 'block' AND delta = '%s'", $form_state['values']['bid']);
   drupal_set_message(t('The block %name has been removed.', array('%name' => $form_state['values']['info'])));
   cache_clear_all();
+  func_clear_cache_bin('cache_block');
   $form_state['redirect'] = 'admin/build/block';
   return;
 }
@@ -358,7 +362,7 @@ function block_box_delete_submit($form, &$form_state) {
 function template_preprocess_block_admin_display_form(&$variables) {
   global $theme_key;
 
-  $block_regions = system_region_list($theme_key);
+  $block_regions = func_get_cache_bootstrap('system_region_list', $theme_key);
   $variables['throttle'] = module_exists('throttle');
   $variables['block_regions'] = $block_regions + array(BLOCK_REGION_NONE => t('Disabled'));
 

@@ -1297,7 +1297,7 @@ function system_find_base_theme($themes, $key, $used_keys = array()) {
  *   A string that is the region name.
  */
 function system_default_region($theme) {
-  $regions = array_keys(system_region_list($theme));
+  $regions = array_keys(func_get_cache_bootstrap('system_region_list', $theme));
   return isset($regions[0]) ? $regions[0] : '';
 }
 
@@ -1316,7 +1316,7 @@ function system_initialize_theme_blocks($theme) {
   // Initialize theme's blocks if none already registered.
   if (!(db_result(db_query("SELECT COUNT(*) FROM {blocks} WHERE theme = '%s'", $theme)))) {
     $default_theme = variable_get('theme_default', 'garland');
-    $regions = system_region_list($theme);
+    $regions = func_get_cache_bootstrap('system_region_list', $theme);
     $result = db_query("SELECT * FROM {blocks} WHERE theme = '%s'", $default_theme);
     while ($block = db_fetch_array($result)) {
       // If the region isn't supported by the theme, assign the block to the theme's default region.
@@ -2396,4 +2396,93 @@ function _system_info_add_path($info, $path) {
     }
   }
   return $info;
+}
+
+/**
+ * Implementation of hook_cache_setters().
+ *
+ */
+function system_cache_setters() {
+  return array(
+    'system_region_list' => array(
+      'bin' => 'cache_bootstrap',
+      'lifetime' => 0,
+      'args' => array('!all_theme'),
+    ),
+    'drupal_get_filenames' => array(
+      'bin' => 'cache_bootstrap',
+      'args' => array('!system_object_type'),
+    ),
+    '_module_list' => array(
+      'bin' => 'cache_bootstrap',
+      'args' => array(array(1, 0)),
+    ),
+    // Path API is implemented into the core and may be used even without path
+    // module enabled.
+    '_drupal_lookup_path' => array(
+      'bin' => 'cache_bootstrap',
+      'args' => array('!langcode'),
+    ),
+    '_list_themes' => array(
+      'bin' => 'cache_bootstrap',
+    ),
+    '_language_list' => array(
+      'bin' => 'cache_bootstrap',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_cache_tokens().
+ *
+ */
+function system_cache_tokens($op, $token = NULL) {
+  switch($op) {
+    case 'list':
+      return array(
+        '!all_theme' => 'List of all themes machine names',
+        '!theme' => 'List of enabled themes machine names',
+        '!system_object_type' => 'List of available system object types. Default is "module" and "theme".',
+        '!langcode' => 'List of langcodes for enabled languages',
+      );
+    case 'view':
+      switch($token) {
+        case '!all_theme':
+          $themes = array();
+          $result = db_query("SELECT name FROM {system} WHERE type = 'theme'");
+          while ($theme = db_fetch_array($result)) {
+            $themes[] = $theme['name'];
+          }
+          return $themes;
+
+        case '!theme':
+          return array_keys(list_themes());
+
+        case '!system_object_type':
+          return array('module', 'theme');
+
+        case '!langcode':
+          // Langcodes required for some core functions like path and should be set
+          // even if locale module is off.
+          $langcodes = array();
+
+          if (module_exists('locale')) {
+            $result = db_query("SELECT language FROM {languages} WHERE enabled = 1");
+            while ($lang = db_fetch_array($result)) {
+              $langcodes[] = $lang['language'];
+            }
+          }
+
+          if (empty($langcodes)) {
+            // Add a default language.
+            $langcodes[] = 'en';
+          }
+          if (!in_array('', $langcodes)) {
+            // Add an "undefined" language.
+            $langcodes[] = '';
+          }
+          return $langcodes;
+      }
+      break;
+  }
 }

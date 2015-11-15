@@ -1741,10 +1741,10 @@ class UserBlocksUnitTests extends DrupalWebTestCase {
     $this->assertEqual(db_result(db_query("SELECT COUNT(*) FROM {sessions} WHERE uid = %d", $user1->uid)), 2, 'Duplicate user session has been inserted.');
 
     // Insert a user with only one session.
-    $this->insertSession(array('uid' => $user2->uid, 'timestamp' => REQUEST_TIME + 1));
+    $this->insertSession(array('uid' => $user2->uid, 'timestamp' => time() + 1));
 
     // Insert an inactive logged-in user who should not be seen in the block.
-    $this->insertSession(array('uid' => $user3->uid, 'timestamp' => (REQUEST_TIME - variable_get('user_block_seconds_online', 900) - 1)));
+    $this->insertSession(array('uid' => $user3->uid, 'timestamp' => (time() - variable_get('user_block_seconds_online', 900) - 1)));
 
     // Insert two anonymous user sessions.
     $this->insertSession();
@@ -1768,7 +1768,7 @@ class UserBlocksUnitTests extends DrupalWebTestCase {
     $fields += array(
       'uid' => 0,
       'sid' => drupal_hash_base64(uniqid(mt_rand(), TRUE)),
-      'timestamp' => REQUEST_TIME,
+      'timestamp' => time(),
     );
     $session = (object)$fields;
     drupal_write_record('sessions', $session);
@@ -2479,5 +2479,89 @@ class UserValidateCurrentPassCustomForm extends DrupalWebTestCase {
     $edit['current_pass'] = $this->accessUser->pass_raw;
     $this->drupalPost('user_form_test_current_password/' . $this->accessUser->uid, $edit, t('Test'));
     $this->assertText(t('The password has been validated and the form submitted successfully.'));
+  }
+}
+
+/**
+ * Tests drupal_is_denied().
+ */
+class UserDrupalIsDenied extends DrupalWebTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'drupal_is_denied() unit tests.',
+      'description' => 'Test that drupal_is_denied() works correctly on a different masks and types.',
+      'group' => 'User',
+    );
+  }
+
+  /**
+   * Test limiting access.
+   */
+  function testDenial() {
+    $mask = $this->randomName();
+    db_query("INSERT INTO {access} (mask, type, status) VALUES ('%s', 'user', 0)", $mask);
+
+    $this->assertTrue(drupal_is_denied('user', $mask), 'User is denied to access.');
+  }
+
+  /**
+   * Test allowing access.
+   */
+  function testAllow() {
+    $mask = $this->randomName();
+    db_query("INSERT INTO {access} (mask, type, status) VALUES ('%s', 'user', 1)", $mask);
+
+    $this->assertFalse(drupal_is_denied('user', $mask), 'User is allowed to access.');
+  }
+
+  /**
+   * Test a limiting and allowing rules combination.
+   */
+  function testDenialAndAllow() {
+    $mask = $this->randomName();
+    db_query("INSERT INTO {access} (mask, type, status) VALUES ('%s', 'user', 0)", $mask);
+    db_query("INSERT INTO {access} (mask, type, status) VALUES ('%s', 'user', 1)", $mask);
+
+    $this->assertFalse(drupal_is_denied('user', $mask), 'User is allowed to access.');
+  }
+
+  /**
+   * Test LIKE pattern.
+   */
+  function testLikePattern() {
+    $mask = $this->randomName();
+    db_query("INSERT INTO {access} (mask, type, status) VALUES ('%s', 'user', 0)", $mask . '%');
+
+    $this->assertTrue(drupal_is_denied('user', $mask . '_' . $this->randomName()), 'User like pattern is denied to access.');
+    $this->assertTrue(drupal_is_denied('user', $mask . '_' . $this->randomName()), 'User like pattern is denied to access.');
+    $this->assertFalse(drupal_is_denied('user', substr($mask, 0, strlen($mask) - 1) . '_' . $this->randomName()), 'User NOT like pattern is allowed to access.');
+  }
+
+  /**
+   * Test patterns with "_" (meaning any char).
+   */
+  function testAnyChar() {
+    $mask = $this->randomName();
+    db_query("INSERT INTO {access} (mask, type, status) VALUES ('%s', 'user', 0)", $mask . '_');
+
+    $this->assertTrue(drupal_is_denied('user', $mask . $this->randomName(1)), 'User like pattern is denied to access.');
+    $this->assertTrue(drupal_is_denied('user', $mask . $this->randomName(1)), 'User like pattern is denied to access.');
+    $this->assertFalse(drupal_is_denied('user', substr($mask, 0, strlen($mask) - 1) . $this->randomName(1)), 'User NOT like pattern is allowed to access.');
+    $this->assertFalse(drupal_is_denied('user', substr($mask, 0, strlen($mask) - 1) . $this->randomName(2)), 'User NOT like pattern is allowed to access.');
+  }
+
+  /**
+   * Test drupal_is_denied() caching.
+   */
+  function testDrupalIsDeniedCaching() {
+    $mask = $this->randomName();
+    db_query("INSERT INTO {access} (mask, type, status) VALUES ('%s', 'user', 0)", $mask);
+
+    $this->assertTrue(drupal_is_denied('user', $mask), 'User is denied to access.');
+
+    db_query("DELETE FROM {access}");
+
+    $this->assertTrue(drupal_is_denied('user', $mask), 'User is still denied to access. Masks are cached.');
   }
 }

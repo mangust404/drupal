@@ -127,6 +127,7 @@ function locale_languages_overview_form_submit($form, &$form_state) {
 
   // Changing the language settings impacts the interface.
   cache_clear_all('*', 'cache_page', TRUE);
+  func_clear_cache_func_bootstrap('_language_list');
 
   $form_state['redirect'] = 'admin/settings/language';
   return;
@@ -377,6 +378,7 @@ function locale_languages_edit_form_submit($form, &$form_state) {
     }
     variable_set('language_default', $default);
   }
+  func_clear_cache_func_bootstrap('_language_list');
   $form_state['redirect'] = 'admin/settings/language';
   return;
 }
@@ -441,6 +443,7 @@ function locale_languages_delete_form_submit($form, &$form_state) {
 
   // Changing the language settings impacts the interface:
   cache_clear_all('*', 'cache_page', TRUE);
+  func_clear_cache_func_bootstrap('_language_list');
 
   $form_state['redirect'] = 'admin/settings/language';
   return;
@@ -1014,6 +1017,8 @@ function locale_add_language($langcode, $name = NULL, $native = NULL, $direction
     // Increment enabled language count if we are adding an enabled language.
     variable_set('language_count', variable_get('language_count', 1) + 1);
   }
+
+  func_clear_cache_func_bootstrap('_language_list');
 
   // Force JavaScript translation file creation for the newly added language.
   _locale_invalidate_js($langcode);

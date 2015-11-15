@@ -26,7 +26,7 @@ function func_cache_notify($msg) {
   if (drupal_is_cli()) {
     print "\n$msg\n\n";
   }
-  else if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL && defined('DRUPAL_MODULES_INITIALIZED')) {
+  else if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL) {
     watchdog('cache', $msg, array(), WATCHDOG_ERROR);
   }
 }
@@ -179,12 +179,12 @@ function func_get_tokens($token) {
 
   $tokens[$token] = array();
 
-  if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL && defined('DRUPAL_MODULES_INITIALIZED')) {
+  if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL) {
     $tokens[$token] = module_invoke_all('cache_tokens', 'view', $token);
   }
   else {
+    // Unable to call module_invoke_all() here.
     foreach (array('system', 'user', 'filter', 'block', 'node') as $module) {
-      // Also unable to call drupal_load here.
       $func_name = $module . '_cache_tokens';
 
       if (function_exists($func_name)) {

@@ -521,6 +521,7 @@ function list_themes($refresh = FALSE) {
 
   if ($refresh) {
     $list = array();
+    func_clear_cache_func_bootstrap('_list_themes');
   }
 
   if (empty($list)) {
@@ -529,13 +530,7 @@ function list_themes($refresh = FALSE) {
     // Extract from the database only when it is available.
     // Also check that the site is not in the middle of an install or update.
     if (db_is_active() && !defined('MAINTENANCE_MODE')) {
-      $result = db_query("SELECT * FROM {system} WHERE type = '%s'", 'theme');
-      while ($theme = db_fetch_object($result)) {
-        if (file_exists($theme->filename)) {
-          $theme->info = unserialize($theme->info);
-          $themes[] = $theme;
-        }
-      }
+      $themes = func_get_cache_bootstrap('_list_themes');
     }
     else {
       // Scan the installation when the database should not be read.
@@ -572,6 +567,24 @@ function list_themes($refresh = FALSE) {
   return $list;
 }
 
+/**
+ * Memoized function helper for list_themes().
+ *
+ * @return array
+ *   list of all enabled themes
+ * @see list_themes()
+ */
+function _list_themes() {
+  $themes = array();
+  $result = db_query("SELECT * FROM {system} WHERE type = '%s'", 'theme');
+  while ($theme = db_fetch_object($result)) {
+    if (file_exists($theme->filename)) {
+      $theme->info = unserialize($theme->info);
+      $themes[] = $theme;
+    }
+  }
+  return $themes;
+}
 
 /**
  * Get a list of available regions from a specified theme.
@@ -582,14 +595,11 @@ function list_themes($refresh = FALSE) {
  *   An array of regions in the form $region['name'] = 'description'.
  */
 function system_region_list($theme_key) {
-  $list = &drupal_static(__FUNCTION__, array());
-
-  if (!array_key_exists($theme_key, $list)) {
-    $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = 'theme' AND name = '%s'", $theme_key)));
-    $list[$theme_key] = array_map('t', $info['regions']);
+  $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = 'theme' AND name = '%s'", $theme_key)));
+  if (!is_array($info['regions'])) {
+    $info['regions'] = array();
   }
-
-  return $list[$theme_key];
+  return array_map('t', $info['regions']);
 }
 
 /**
@@ -2061,7 +2071,7 @@ function template_preprocess_page(&$variables) {
 
   global $theme;
   // Populate all block regions.
-  $regions = system_region_list($theme);
+  $regions = func_get_cache_bootstrap('system_region_list', $theme);
   // Load all region content assigned via blocks.
   foreach (array_keys($regions) as $region) {
     // Prevent left and right regions from rendering blocks when 'show_blocks' == FALSE.

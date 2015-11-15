@@ -501,6 +501,7 @@ function menu_delete_menu_confirm_submit($form, &$form_state) {
   db_query("DELETE FROM {blocks_roles} WHERE module = 'menu' AND delta = '%s'", $menu['menu_name']);
   menu_cache_clear_all();
   cache_clear_all();
+  func_clear_cache_bin('cache_block');
   $t_args = array('%title' => $menu['title']);
   drupal_set_message(t('The custom menu %title has been deleted.', $t_args));
   watchdog('menu', 'Deleted custom menu %title and all its menu items.', $t_args, WATCHDOG_NOTICE);

@@ -253,7 +253,7 @@ function _block_rehash($theme = NULL) {
 
   $blocks = array();
   // Valid region names for the theme.
-  $regions = system_region_list($theme);
+  $regions = func_get_cache_bootstrap('system_region_list', $theme);
 
   foreach (module_implements('block') as $module) {
     $module_blocks = module_invoke($module, 'block', 'list');
@@ -438,7 +438,6 @@ function block_user($type, $edit, &$account, $category = NULL) {
 
       break;
     case 'validate':
-    //print_R($edit);
       if (empty($edit['block'])) {
         $edit['block'] = array();
       }
@@ -469,8 +468,12 @@ function block_list($region) {
 
   if (!count($blocks)) {
     $rids = array_keys($user->roles);
-    $result = db_query(db_rewrite_sql("SELECT DISTINCT b.* FROM {blocks} b LEFT JOIN {blocks_roles} r ON b.module = r.module AND b.delta = r.delta WHERE b.theme = '%s' AND b.status = 1 AND (r.rid IN (". db_placeholders($rids) .") OR r.rid IS NULL) ORDER BY b.region, b.weight, b.module", 'b', 'bid'), array_merge(array($theme_key), $rids));
-    while ($block = db_fetch_object($result)) {
+    asort($rids);
+
+    $menu_item = menu_get_item();
+    $path = $menu_item['path'];
+
+    foreach(func_get_cache('_block_list', $rids, $theme_key) as $block) {
       if (!module_exists($block->module)) {
         // Skip blocks from disabled modules.
         continue;
@@ -494,7 +497,6 @@ function block_list($region) {
       // Match path if necessary
       if ($block->pages) {
         if ($block->visibility < 2) {
-          $path = drupal_get_path_alias($_GET['q']);
           // Compare with the internal and path alias (if any).
           $page_match = drupal_match_path($path, $block->pages);
           if ($path != $_GET['q']) {
@@ -569,6 +571,22 @@ function block_list($region) {
 }
 
 /**
+ * Memoized function for block_list().
+ */
+function _block_list($rids, $theme_key) {
+  $blocks = array();
+
+  $placeholders = db_placeholders($rids);
+  $result = db_query(db_rewrite_sql("SELECT DISTINCT b.* FROM {blocks} b LEFT JOIN {blocks_roles} r ON b.module = r.module AND b.delta = r.delta WHERE b.theme = '%s' AND b.status = 1 AND (" . ($placeholders? "r.rid IN (" . $placeholders . ") OR ": "") . "r.rid IS NULL) ORDER BY b.region, b.weight, b.module", 'b', 'bid'), array_merge(array($theme_key), $rids));
+
+  while ($block = db_fetch_object($result)) {
+    $blocks[] = $block;
+  }
+
+  return $blocks;
+}
+
+/**
  * Assemble the cache_id to use for a given block.
  *
  * The cache_id string reflects the viewing context for the current block
@@ -618,4 +636,18 @@ function _block_get_cache_id($block) {
 
     return implode(':', $cid_parts);
   }
+}
+
+/**
+ * Implementation of hook_cache_setters().
+ *
+ */
+function block_cache_setters() {
+  return array(
+    // All possible role and theme dependent blocks list.
+    '_block_list' => array(
+      'bin' => 'cache_block',
+      'args' => array('!unique_rids', '!theme'),
+    ),
+  );
 }

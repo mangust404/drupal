@@ -693,7 +693,7 @@ function devel_switch_user_list() {
   if (user_access('switch users')) {
     $list_size = variable_get('devel_switch_user_list_size', 10);
     $dest = drupal_get_destination();
-    $dest_value =  urldecode(substr($dest, strlen('destination=')));
+    $dest_value =  urldecode($dest['destination']);
     // Try to find at least $list_size users that can switch.
     // Inactive users are omitted from all of the following db selects.
     $roles = user_roles(TRUE, 'switch users');
@@ -1942,7 +1942,7 @@ function devel_cache_query_table($queries, $counts) {
       if (!empty($GLOBALS['drupal_test_info'])) {
         $var_output = print_r($ar[1], TRUE);
         // Suppress very long output data.
-        $var_output = (strlen($var_output) > 300? substr($var_output, 0, 300) . '... (' . (strlen($var_output) - 300) . ' chars)': $var_output);
+        $var_output = (strlen($var_output) > 3000? substr($var_output, 0, 3000) . '... (' . (strlen($var_output) - 3000) . ' chars)': $var_output);
         $cell[$i][] = $ar[0] . ' ' . '<pre>' . $var_output . '</pre>';
       }
       else {

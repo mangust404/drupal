@@ -716,6 +716,7 @@ class BlockCacheTestCase extends DrupalWebTestCase {
     if ($current_mode != $cache_mode) {
       $this->fail(t('Unable to set cache mode to %mode. Current mode: %current_mode', array('%mode' => $cache_mode, '%current_mode' => $current_mode)));
     }
+    func_clear_cache_bin('cache_block');
   }
 }
 

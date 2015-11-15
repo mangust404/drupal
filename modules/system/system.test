@@ -84,6 +84,7 @@ class ModuleTestCase extends DrupalWebTestCase {
    *   Expected module state.
    */
   function assertModules(array $modules, $enabled) {
+    func_clear_cache_func_bootstrap('_module_list');
     module_list(TRUE, FALSE);
     foreach ($modules as $module) {
       if ($enabled) {
@@ -271,6 +272,7 @@ class EnableDisableTestCase extends ModuleTestCase {
 
     // Refresh current modules list so tearDown() will be able to correctly 
     // clean the test environment.
+    func_clear_cache_func_bootstrap('_module_list');
     module_list(TRUE, FALSE);
   }
 
@@ -417,6 +419,10 @@ class ModuleDependencyTestCase extends ModuleTestCase {
     // Assert that the locale tables were enabled.
     $this->assertTableCount('languages', TRUE);
     //$this->assertTableCount('locale', TRUE);
+
+    module_enable(array('locale'));
+    // Reset modules list for clean uninstall.
+    func_clear_cache_func_bootstrap('_module_list');
   }
 
   /**

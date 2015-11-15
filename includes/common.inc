@@ -6180,6 +6180,7 @@ function drupal_flush_all_caches() {
   else {
     drupal_static_reset('_system_theme_data');
     drupal_static_reset('system_region_list');
+    func_clear_cache_func_bootstrap('system_region_list');
     list_themes(TRUE);
     system_theme_data();
   }
