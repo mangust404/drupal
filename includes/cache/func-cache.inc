@@ -26,7 +26,7 @@ function func_cache_notify($msg) {
   if (drupal_is_cli()) {
     print "\n$msg\n\n";
   }
-  else {
+  else if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL && defined('DRUPAL_MODULES_INITIALIZED')) {
     watchdog('cache', $msg, array(), WATCHDOG_ERROR);
   }
 }
@@ -115,14 +115,136 @@ function func_get_setters() {
   $setters = &drupal_static(__FUNCTION__);
 
   if (empty($setters)) {
+    // Initialize with bootstrap cache setters.
+    $setters = drupal_static('func_get_setters_bootstrap');
+
+    // Bootstrap is full, we may safely call module_implements() now.
     foreach (module_implements('cache_setters') as $module) {
       foreach (module_invoke($module, 'cache_setters') as $func => $func_info) {
-        $func_info['module'] = $module;
-        $setters[$func] = $func_info;
+        if (!isset($setters[$func])) {
+          $func_info['module'] = $module;
+          $setters[$func] = $func_info;
+        }
       }
     }
   }
   return $setters;
+}
+
+/**
+ * Special version of func_get_setters() that can be safely called
+ * before drupal fully bootstraped.
+ *
+ * @return
+ *   Array of system core modules cache setters.
+ * @see func_get_setters()
+ */
+function func_get_setters_bootstrap() {
+  $setters = &drupal_static(__FUNCTION__);
+
+  if (empty($setters)) {
+    include_once(DRUPAL_ROOT . '/includes/module.inc');
+    // While bootstrap is less than DRUPAL_BOOTSTRAP_FULL we unable to call
+    // module_implements() because it will cause infinite loop.
+    // For a bootstrap process we should gather cache setters only from required
+    // core modules.
+    foreach (array('system', 'user', 'filter', 'block', 'node') as $module) {
+      // Also unable to call drupal_load here.
+      include_once(DRUPAL_ROOT . '/modules/' . $module . '/' . $module . '.module');
+      $func_name = $module . '_cache_setters';
+      if (function_exists($func_name)) {
+        foreach ($func_name() as $func => $func_info) {
+          $func_info['module'] = $module;
+          $setters[$func] = $func_info;
+        }
+      }
+    }
+  }
+
+  return $setters;
+}
+
+/**
+ * Get cache tokens.
+ *
+ * @return
+ *   Array of cache tokens.
+ */
+function func_get_tokens($token) {
+  $tokens = &drupal_static(__FUNCTION__);
+
+  if (isset($tokens[$token])) {
+    return $tokens[$token];
+  }
+
+  $tokens[$token] = array();
+
+  if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL && defined('DRUPAL_MODULES_INITIALIZED')) {
+    $tokens[$token] = module_invoke_all('cache_tokens', 'view', $token);
+  }
+  else {
+    foreach (array('system', 'user', 'filter', 'block', 'node') as $module) {
+      // Also unable to call drupal_load here.
+      $func_name = $module . '_cache_tokens';
+
+      if (function_exists($func_name)) {
+        $result = $func_name('view');
+        if (is_array($result)) {
+          $tokens[$token] = array_merge($tokens, $result);
+        }
+      }
+    }
+  }
+  return $tokens[$token];
+}
+
+/**
+ * Include required files for cached function.
+ *
+ * @param $func_info array
+ *   Memoized function definition from hook_cache_setters().
+ *
+ * @see hook_cache_setters()
+ */
+function func_file_include(&$func_info) {
+  if (!empty($func_info['#included'])) {
+    return;
+  }
+  if (!empty($func_info['file'])) {
+    if (file_exists($func_info['file'])) {
+      // Root-relative or absolute path.
+      include_once($func_info['file']);
+    }
+    else if (file_exists($file = drupal_get_path('module', $func_info['module']) . '/' . $func_info['file'])) {
+      // Module-relative path.
+      include_once($file);
+    }
+    
+  }
+  $func_info['#included'] = TRUE;
+}
+
+/**
+ * Include required files for cached function while not fully bootstrapped.
+ *
+ * @param $func_info array
+ *   Memoized function definition from hook_cache_setters().
+ *
+ * @see hook_cache_setters()
+ */
+function func_file_include_bootstrap(&$func_info) {
+  if (!empty($func_info['#included'])) {
+    return;
+  }
+  if (!empty($func_info['file'])) {
+    if (file_exists($func_info['file'])) {
+      include_once($func_info['file']);
+    }
+    else if (file_exists($file = DRUPAL_ROOT . '/modules/' . $func_info['module'] . '/' . $func_info['file'])) {
+      include_once($file);
+    }
+  }
+  $func_info['#included'] = TRUE;
 }
 
 /**
@@ -149,7 +271,6 @@ function func_get_cache() {
 
   $cache_setters = func_get_setters();
 
-  // Check that cache setter function is defined by hooks.
   if (!isset($cache_setters[$func])) {
     func_cache_notify('ERROR: Function cache-setter is not found in setters registry: ' . $func);
     if (function_exists($func)) {
@@ -161,7 +282,7 @@ function func_get_cache() {
   }
 
   // Prepare cached function hook info.
-  $func_info = $cache_setters[$func];
+  $func_info = &$cache_setters[$func];
 
   $cid = func_cache_get_cid($func, $args, $func_info);
 
@@ -173,10 +294,8 @@ function func_get_cache() {
     // Trying to fetch from the cache.
     $data = cache_get($cid, $func_info['bin']);
     if (empty($data)) {
+      func_file_include($func_info);
       // No data in cache. Rebuild it.
-      if (!empty($func_info['file'])) {
-        include_once(drupal_get_path('module', $func_info['module']) . '/' . $func_info['file']);
-      }
       if (!function_exists($func)) {
         func_cache_notify('ERROR: Function cache-setter doesn\'t exist: ' . $func);
         return FALSE;
@@ -193,13 +312,72 @@ function func_get_cache() {
 
   // Invoke cache setter callback if provided.
   if (isset($func_info['callback'])) {
-    if (!empty($func_info['file'])) {
-      include_once(drupal_get_path('module', $func_info['module']) . '/' . $func_info['file']);
-    }
+    func_file_include($func_info);
     if (function_exists($func_info['callback'])) {
       // Invoking callbacks only if exists.
       $args[] = &$result;
       call_user_func_array($func_info['callback'], $args);
+    }
+  }
+
+  // Store the result in the static cache.
+  $static[$cid] = $result;
+  return $result;
+}
+
+/**
+ * Special version of func_get_cache() that can be safely called
+ * before drupal fully bootstraped without unfinite loop calls.
+ *
+ * @param ...
+ *   Array of parameters.
+ *
+ * @return
+ *   The function contents. Depends on cached function result.
+ * @see func_get_cache()
+ */
+function func_get_cache_bootstrap() {
+  $static = &drupal_static(__FUNCTION__, array());
+
+  $args = func_get_args();
+  $func = array_shift($args);
+
+  $cache_setters = func_get_setters_bootstrap();
+
+  if (!isset($cache_setters[$func])) {
+    if (function_exists($func)) {
+      // Fallback if cache setter function exists but not defined by hooks:
+      // just call it and return result. The warning message was printed or logged.
+      return call_user_func_array($func, $args);
+    }
+    return;
+  }
+
+  // Prepare cached function hook info.
+  $func_info = &$cache_setters[$func];
+
+  $cid = func_cache_get_cid($func, $args, $func_info);
+
+  if (isset($static[$cid])) {
+    // Return function contents from static cache for a better speed.
+    $result = $static[$cid];
+  }
+  else {
+    // Trying to fetch from the cache.
+    $data = cache_get($cid, $func_info['bin']);
+    if (empty($data)) {
+      // No data in cache. Rebuild it.
+      func_file_include_bootstrap($func_info);
+      if (!function_exists($func)) {
+        return FALSE;
+      }
+      $result = call_user_func_array($func, $args);
+      // We don't check the result. It also may be null or false but it should be cached.
+      cache_set($cid, $result, $func_info['bin']);
+    }
+    else {
+      // Cache hit.
+      $result = $data->data;
     }
   }
 
@@ -255,7 +433,11 @@ function func_cache_get_arguments($func_args) {
   // Fetch all possible tokens values for extracted tokens.
   $token_values = array();
   foreach($tokens as $token) {
-    $token_values[$token] = module_invoke_all('cache_tokens', 'view', $token);
+    $token_values[$token] = func_get_tokens($token);
+    // If no tokens provided make an array with single NULL for correct arguments list.
+    if (empty($token_values[$token])) {
+      $token_values[$token] = array(NULL);
+    }
   }
 
   $_token_values = array();
@@ -276,7 +458,6 @@ function func_cache_get_arguments($func_args) {
       $_token_values['param' . $index] = $arg;
     }
   }
-
   return call_user_func_array('func_cache_cartesian', array_values($_token_values));
 }
 
@@ -293,8 +474,8 @@ function func_cache_get_arguments($func_args) {
  * @see func_cache_get()
  * @see func_cache_set()
  */
-function func_rebuild_args($func, $func_info, $args) {
-  $static = &drupal_static('func_get_cache');
+function func_rebuild_args($func, $func_info, $args, $bootstrap = FALSE) {
+  $static = &drupal_static('func_get_cache' . ($bootstrap? '_bootstrap': ''));
 
   foreach($args as $arg) {
     $_cid = func_cache_get_cid($func, $arg, $func_info);
@@ -324,8 +505,8 @@ function func_rebuild_args($func, $func_info, $args) {
  * @see func_rebuild_args()
  * @see func_clear_cache_func()
  */
-function func_rebuild_all_args($func, $func_info) {
-  func_rebuild_args($func, $func_info, func_cache_get_arguments($func_info['args']));
+function func_rebuild_all_args($func, $func_info, $bootstrap = FALSE) {
+  func_rebuild_args($func, $func_info, func_cache_get_arguments($func_info['args']), $bootstrap);
 }
 
 /**
@@ -356,6 +537,10 @@ function func_process_cache($bin = NULL, $batch_func = NULL, $batch_offset = NUL
   $safe_memory_size = 5 * 1024 * 1024;
 
   foreach($cache_setters as $func => $func_info) {
+    $func_info = &$cache_setters[$func];
+
+    $func_info['func'] = $func;
+
     if (!empty($batch_func) && $func != $batch_func) {
       // Skip for the necessarry cache function in batch process.
       continue;
@@ -376,16 +561,15 @@ function func_process_cache($bin = NULL, $batch_func = NULL, $batch_offset = NUL
       continue;
     }
 
-    if (!empty($func_info['file'])) {
-      include_once(drupal_get_path('module', $func_info['module']) . '/' . $func_info['file']);
-    }
+    func_file_include($func_info);
+
     if (!function_exists($func)) {
       func_cache_notify('ERROR: Function cache-setter doesn\'t exist: ' . $func);
       continue;
     }
+
     // Rebuild a set of args if present.
     if (!empty($func_info['args']) && count($func_info['args']) > 0) {
-
       // Generating of arguments may consume a lot of memory.
       // Right here we are sure that we have least $safe_memory_size bytes of free memory.
       $func_info['args'] = func_cache_get_arguments($func_info['args']);
@@ -512,10 +696,6 @@ function func_process_cache($bin = NULL, $batch_func = NULL, $batch_offset = NUL
  *
  * @param ...
  *   Function arguments.
- * @param $batch_func
- *   Cached function name to rebuild. Used by delayed cache warmup process.
- * @param $batch_offset
- *   Cached function name to rebuild. Used by delayed cache warmup process.
  *
  */
 function func_clear_cache_func() {
@@ -528,11 +708,10 @@ function func_clear_cache_func() {
 
   $cache_setters = func_get_setters();
 
-  $func_info = $cache_setters[$func];
+  $func_info = &$cache_setters[$func];
 
-  if (!empty($func_info['file'])) {
-    include_once(drupal_get_path('module', $func_info['module']) . '/' . $func_info['file']);
-  }
+  func_file_include($func_info);
+
   if (!function_exists($func)) {
     func_cache_notify('ERROR: Function cache-setter doesn\'t exist: ' . $func);
     return FALSE;
@@ -579,6 +758,73 @@ function func_clear_cache_func() {
   }
 }
 
+
+/**
+ * Special version of func_clear_cache_func_bootstrap() that can be
+ * safely called before drupal fully bootstraped.
+ *
+ * @param ...
+ *   Function arguments.
+ * @see func_clear_cache_func()
+ */
+function func_clear_cache_func_bootstrap() {
+  $static = &drupal_static('func_get_cache_bootstrap');
+
+  $args = func_get_args();
+  if (count($args) > 0) {
+    $func = array_shift($args);
+  }
+
+  $cache_setters = func_get_setters_bootstrap();
+
+  $func_info = &$cache_setters[$func];
+
+  func_file_include_bootstrap($func_info);
+  if (!function_exists($func)) {
+    return FALSE;
+  }
+
+  $args_example = array();
+
+  if (!empty($func_info['args'])) {
+    $args_example = current($func_info['args']);
+    if (!is_array($args_example)) $args_example = array($args_example);
+  }
+
+  if (!empty($func_info['args']) && empty($args)) {
+    // Rebuild all arguments variations if no arguments was provided.
+    func_rebuild_all_args($func, $func_info, TRUE);
+  }
+  else if (!empty($func_info['args'])) {
+    // We should get all possible function parameters variations and filter
+    // only matching arguments.
+    $filtered_arguments = func_cache_get_arguments($func_info['args']);
+    $args = array_values($args);
+    foreach($filtered_arguments as $filter_index => $filter_param) {
+      $valid = TRUE;
+      foreach($filter_param as $i => $arg) {
+        if (isset($args[$i]) && $arg != $args[$i]) {
+          $valid = FALSE;
+          break;
+        }
+      }
+      if (!$valid) unset($filtered_arguments[$filter_index]);
+    }
+
+    // Rebuild only matching arguments.
+    func_rebuild_args($func, $func_info, $filtered_arguments, TRUE);
+  }
+  else {
+    // Rebuild a basic cached function without parameters.
+    $_cid = func_cache_get_cid($func, $args, $func_info);
+    $result = call_user_func_array($func, $args);
+
+    cache_set($_cid, $result, $func_info['bin']);
+
+    $static[$_cid] = $result;
+  }
+}
+
 /**
  * Rebuild a cached functions table (bin).
  * All the cached functions in a specified bin will be rebuilded.
@@ -606,14 +852,13 @@ function func_clear_cache_bin($bin) {
   $cache_setters = func_get_setters();
 
   foreach($cache_setters as $func => $func_info) {
+    $func_info = $cache_setters[$func];
     $cid = func_cache_get_cid($func, $args, $func_info);
 
     if ($bin == $func_info['bin']) {
       $call_args = $args;
       array_unshift($call_args, $func);
-      if (!empty($func_info['file'])) {
-        include_once(drupal_get_path('module', $func_info['module']) . '/' . $func_info['file']);
-      }
+      func_file_include($func_info);
       if (!function_exists($func)) {
         func_cache_notify('ERROR: Function cache-setter doesn\'t exist: ' . $func);
         return FALSE;

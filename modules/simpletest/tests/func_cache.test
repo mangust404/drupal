@@ -72,6 +72,22 @@ class CacheFuncTestCase extends DrupalWebTestCase {
   }
 
   /**
+   * Test defined but not existing cache function.
+   */
+  function testUnexistingFunction() {
+    $name = $this->randomName();
+    $func = 'func_cache_test_setter_unexisted_func';
+
+    $this->assertFalse(func_get_cache($func, $name), 'Function cache returned FALSE.');
+
+    $cache_setters = func_cache_test_cache_setters();
+    $cid = func_cache_get_cid($func, array(1, NULL, 0), $cache_setters[$func]);
+    $data = cache_get($cid, 'cache');
+
+    $this->assertTrue(empty($data), 'Cache entry not exists.');
+  }
+
+  /**
    * Test rebuild of cache entries with limited lifetime.
    */
   function testCacheFuncProcessLifetime() {
@@ -324,7 +340,7 @@ class CacheFuncTestCase extends DrupalWebTestCase {
         array('var2', 8, 1),
         array('var2', 8, 2),
         array('var2', 8, 3),
-    ), 'Правильные результаты для complex token [[1, !test, !test1], [2, !test, !test1]]');
+    ), 'Correct results for complex token [[1, !test, !test1], [2, !test, !test1]]');
 
     $data = func_cache_get_arguments(array(array(1, 2), '!test', array(0, 1)));
     $this->assertEqual($data, array(
@@ -336,14 +352,14 @@ class CacheFuncTestCase extends DrupalWebTestCase {
       array(2, 9, 1),
       array(2, 8, 0),
       array(2, 8, 1),
-    ), 'Правильные результаты для complex token [[1, 2], !test, [0, 1]]');
+    ), 'Correct results for complex token [[1, 2], !test, [0, 1]]');
 
     $data = func_cache_get_arguments(array('!test_array'));
     $this->assertEqual($data, array(
       array(array(1, 2)),
       array(array(2, 3)),
       array(array(3, 4)),
-    ), 'Правильные результаты для array token [!test_array]');
+    ), 'Correct results for array token [!test_array]');
 
 
     $data = func_cache_get_arguments(array('!test_array', '!test'));
@@ -354,9 +370,48 @@ class CacheFuncTestCase extends DrupalWebTestCase {
       array(array(2, 3), 8),
       array(array(3, 4), 9),
       array(array(3, 4), 8),
-    ), 'Правильные результаты для array token [!test_array, !test]');
+    ), 'Correct results for array token [!test_array, !test]');
 
-  }  
+  }
+
+  /**
+   * Test correct cache rebuild with empty tokens list.
+   */
+  function testEmptyTokenList() {
+    func_process_cache('cache');
+
+    $cache_setters = func_cache_test_cache_setters();
+
+    $func = 'func_cache_test_empty_token';
+    $cid = func_cache_get_cid($func, array(1, NULL, 0), $cache_setters[$func]);
+    $data = cache_get($cid, 'cache');
+
+    $this->assertEqual($data->data, '1_NULL_0', 'Cache entry exists.');
+  }
+
+  /**
+   * Test invoking memoized function from file by module-relative path.
+   */
+  function testFunctionRelativePath() {
+    $name = $this->randomName();
+    $this->assertEqual($name, func_get_cache('func_cache_test_setter_func_relative_file', $name), 'Function file was loaded correctly.');
+  }
+
+  /**
+   * Test invoking memoized function from file by absolute path.
+   */
+  function testFunctionAbsolutePath() {
+    $name = $this->randomName();
+    $this->assertEqual($name, func_get_cache('func_cache_test_setter_func_absolute_file', $name), 'Function file was loaded correctly.');
+  }
+
+  /**
+   * Test invoking memoized function from file by absolute path.
+   */
+  function testFunctionUnexistedFile() {
+    $name = $this->randomName();
+    $this->assertFalse(func_get_cache('func_cache_test_setter_func_unexisted_file', $name), 'Function file was not found.');
+  }
 }
 
 ?>

@@ -15,11 +15,25 @@ function func_cache_test_cache_setters() {
       'bin' => 'cache',
       'args' => array(array(1, 2, 3)),
     ),
-    'func_cache_test_setter_func_different_file' => array(
-      'title' => 'Sample cached function implemented in a different file',
+    'func_cache_test_setter_unexisted_func' => array(
+      'title' => 'Test unexisted cache function',
+      'bin' => 'cache',
+    ),
+    'func_cache_test_setter_func_relative_file' => array(
+      'title' => 'Sample cached function implemented in file with relative path',
       'bin' => 'cache',
       'args' => array(array(1, 2, 3)),
       'file' => 'func_cache_test.inc',
+    ),
+    'func_cache_test_setter_func_absolute_file' => array(
+      'title' => 'Sample cached function implemented in file with absolute path',
+      'bin' => 'cache',
+      'file' => dirname(__FILE__) . '/func_cache_test_absolute.inc',
+    ),
+    'func_cache_test_setter_func_unexisted_file' => array(
+      'title' => 'Test not existing implementation file',
+      'bin' => 'cache',
+      'file' => 'func_cache_test_unexisted.inc',
     ),
     'func_cache_test_token_func1' => array(
       'title' => 'Function with token argument',
@@ -37,6 +51,11 @@ function func_cache_test_cache_setters() {
       'bin' => 'cache_form',
       'args' => array(array(1, 2), '!test', array(0, 1)),
     ),
+    'func_cache_test_empty_token' => array(
+      'title' => 'Test arguments order with empty tokens.',
+      'bin' => 'cache',
+      'args' => array(array(1, 2), '!empty_test', array(0, 1)),
+    ),
   );
 }
 
@@ -44,27 +63,30 @@ function func_cache_test_cache_setters() {
  * Implementation of hook_cache_tokens().
  */
 function func_cache_test_cache_tokens($op, $token = NULL) {
-  switch($op) {
+  switch ($op) {
     case 'info':
       return array(
         '!test' => 'Sample test token', 
         '!test1' => 'Another sample test token', 
         '!test_array' => 'Token returning array of arrays'
       );
-    break;
+      break;
     case 'view':
-      switch($token) {
+      switch ($token) {
         case '!test':
           return array(9, 8);
-        break;
+          break;
         case '!test1':
           return array(1, 2, 3);
-        break;
+          break;
         case '!test_array':
           return array(array(1, 2), array(2, 3), array(3, 4));
-        break;
+          break;
+        case '!empty_test':
+          return array();
+          break;
       }
-    break;
+      break;
   }
 }
 
@@ -81,9 +103,10 @@ function func_cache_test_setter_basic_func() {
  */
 function func_cache_test_setter_simple_arguments($arg = NULL) {
   global $test_data;
-  if(!empty($arg)) {
+  if (!empty($arg)) {
     return $test_data . '_' . $arg;
-  } else {
+  }
+  else {
     return $test_data;
   }
 }
@@ -110,4 +133,11 @@ function func_cache_test_token_func2($foo, $gid) {
 function func_cache_test_token_func3($foo, $gid, $anon) {
   global $test_data;
   return $test_data . '_' . $foo . '_' . $gid . '_' . $anon;
+}
+
+function func_cache_test_empty_token($first, $second, $third) {
+  if (is_null($second)) {
+    $second = 'NULL';
+  }
+  return $first . '_' . $second . '_' . $third;
 }
