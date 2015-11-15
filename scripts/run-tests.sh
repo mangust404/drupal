@@ -214,6 +214,7 @@ function simpletest_script_parse_args() {
     'verbose' => FALSE,
     'errors' => FALSE,
     'test_names' => array(),
+    'display_class' => FALSE,
     // Used internally.
     'test-id' => NULL,
     'execute-batch' => FALSE
@@ -384,6 +385,7 @@ function simpletest_script_execute_batch() {
  * Run a single test (assume a Drupal bootstrapped environment).
  */
 function simpletest_script_run_one_test($test_id, $test_class) {
+  global $args;
   error_reporting(E_ALL & ~E_DEPRECATED);
   global $current_test_class, $current_test_method, $test_run_success;
   $current_test_class = $test_class;
@@ -430,7 +432,7 @@ function simpletest_script_run_one_test($test_id, $test_class) {
     $index = $data->data;
     cache_set($test_id . '_index', $index + 1, 'cache');
   }
-  simpletest_script_print((empty($index)? '': $index . '. ') . $info['name'] . ' ' . _simpletest_format_summary_line($test->results) . ($status == 'fail'? ' (' . $test_class . ')': '') . "\n", simpletest_script_color_code($status));
+  simpletest_script_print((empty($index)? '': $index . '. ') . $info['name'] . ' ' . _simpletest_format_summary_line($test->results) . ($status == 'fail' || !empty($args['display_class'])? ' (' . $test_class . ')': '') . "\n", simpletest_script_color_code($status));
 }
 
 /**
@@ -443,6 +445,10 @@ function simpletest_script_command($concurrency, $test_id, $tests) {
   if ($args['color']) {
     $command .= ' --color';
   }
+  if (!empty($args['name'])) {
+    $command .= ' --display_class';
+  }
+
   $command .= " --php " . escapeshellarg($php) . " --concurrency $concurrency --test-id $test_id --execute-batch $tests";
   passthru($command);
 }
@@ -504,13 +510,15 @@ function simpletest_script_get_test_list() {
       }
       foreach (simpletest_test_get_all_classes() as $class => $info) {
         require_once($info['file']);
-        foreach (get_class_methods($class) as $method) {
-          if (stripos($method, 'test') === 0 && stripos($method, $args['name']) !== FALSE) {
-            $test_list[] = $class . '::' . $method;
+        if (method_exists($class, 'getInfo')) {
+          foreach (get_class_methods($class) as $method) {
+            if (stripos($method, 'test') === 0 && stripos($method, $args['name']) !== FALSE) {
+              $test_list[] = $class . '::' . $method;
+            }
           }
-        }
-        if (stripos($class, $args['name']) !== FALSE) {
-          $test_list[] = $class;
+          if (stripos($class, $args['name']) !== FALSE) {
+            $test_list[] = $class;
+          }
         }
       }
     }
@@ -577,8 +585,9 @@ function simpletest_script_reporter_display_results() {
 
   echo "\n";
   $end = timer_stop('run-tests');
+  echo "Complete: " . $args['url'] . "\n";
   echo "Test run duration: " . format_interval($end['time'] / 1000);
-  echo "\n";
+  echo "\n\n\n";
 
   $results_map = array(
     'pass' => 'Pass',
