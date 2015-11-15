@@ -610,12 +610,15 @@ function system_schema() {
     'primary key' => array('cid'),
     );
 
+  $schema['cache_bootstrap'] = $schema['cache'];
+  $schema['cache_bootstrap']['description'] = 'Cache table for data required to bootstrap Drupal, may be routed to a shared memory cache.';
   $schema['cache_form'] = $schema['cache'];
   $schema['cache_form']['description'] = 'Cache table for the form system to store recently built forms and their storage data, to be used in subsequent page requests.';
   $schema['cache_page'] = $schema['cache'];
   $schema['cache_page']['description'] = 'Cache table used to store compressed pages for anonymous users, if page caching is enabled.';
   $schema['cache_menu'] = $schema['cache'];
   $schema['cache_menu']['description'] = 'Cache table for the menu system to store router information as well as generated link trees for various menu/page/user combinations.';
+
 
   $schema['files'] = array(
     'description' => 'Stores information for uploaded files.',
@@ -2782,5 +2785,15 @@ function system_update_6502() {
   $ret = array();
   $schema = system_schema();
   db_add_field($ret, 'menu_links', 'is_system', $schema['menu_links']['fields']['is_system']);
+  // Delete duplicate menu links caused by new update.
+  // Menu rebuilding will create new links for all menu router items.
+  $ret[] = update_sql("DELETE FROM {menu_links} WHERE link_path IN (SELECT path FROM {menu_router})");
+  return $ret;  
+}
+
+function system_update_6503() {
+  $ret = array();
+  $schema = system_schema();
+  db_create_table($ret, 'cache_bootstrap', $schema['cache_bootstrap']);
   return $ret;  
 }
