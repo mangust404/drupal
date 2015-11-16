@@ -511,12 +511,15 @@ function simpletest_script_get_test_list() {
       foreach (simpletest_test_get_all_classes() as $class => $info) {
         require_once($info['file']);
         if (method_exists($class, 'getInfo')) {
+          $has_methods = FALSE;
           foreach (get_class_methods($class) as $method) {
             if (stripos($method, 'test') === 0 && stripos($method, $args['name']) !== FALSE) {
+              $has_methods = TRUE;
               $test_list[] = $class . '::' . $method;
             }
           }
-          if (stripos($class, $args['name']) !== FALSE) {
+          if (!$has_methods && stripos($class, $args['name']) !== FALSE) {
+            // Add entire class if no methods were added.
             $test_list[] = $class;
           }
         }
