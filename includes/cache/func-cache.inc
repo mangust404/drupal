@@ -728,7 +728,7 @@ function func_clear_cache_func() {
     // Rebuild all arguments variations if no arguments was provided.
     func_rebuild_all_args($func, $func_info);
   }
-  else if (!empty($func_info['args'])) {
+  else if (!empty($func_info['args']) && count($args) < count($func_info['args'])) {
     // We should get all possible function parameters variations and filter
     // only matching arguments.
     $filtered_arguments = func_cache_get_arguments($func_info['args']);
@@ -748,7 +748,7 @@ function func_clear_cache_func() {
     func_rebuild_args($func, $func_info, $filtered_arguments);
   }
   else {
-    // Rebuild a basic cached function without parameters.
+    // Rebuild a basic cached function without parameters or a complete arguments set.
     $_cid = func_cache_get_cid($func, $args, $func_info);
     $result = call_user_func_array($func, $args);
 
@@ -795,7 +795,7 @@ function func_clear_cache_func_bootstrap() {
     // Rebuild all arguments variations if no arguments was provided.
     func_rebuild_all_args($func, $func_info, TRUE);
   }
-  else if (!empty($func_info['args'])) {
+  else if (!empty($func_info['args']) && count($args) < count($func_info['args'])) {
     // We should get all possible function parameters variations and filter
     // only matching arguments.
     $filtered_arguments = func_cache_get_arguments($func_info['args']);
@@ -815,7 +815,7 @@ function func_clear_cache_func_bootstrap() {
     func_rebuild_args($func, $func_info, $filtered_arguments, TRUE);
   }
   else {
-    // Rebuild a basic cached function without parameters.
+    // Rebuild a basic cached function without parameters or a complete arguments set.
     $_cid = func_cache_get_cid($func, $args, $func_info);
     $result = call_user_func_array($func, $args);
 

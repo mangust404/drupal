@@ -56,6 +56,11 @@ function func_cache_test_cache_setters() {
       'bin' => 'cache',
       'args' => array(array(1, 2), '!empty_test', array(0, 1)),
     ),
+    'func_cache_test_empty_token_no_args' => array(
+      'title' => 'Test empty tokens without other args.',
+      'bin' => 'cache',
+      'args' => array('!empty_test'),
+    ),
   );
 }
 
@@ -140,4 +145,9 @@ function func_cache_test_empty_token($first, $second, $third) {
     $second = 'NULL';
   }
   return $first . '_' . $second . '_' . $third;
+}
+
+function func_cache_test_empty_token_no_args($empty_arg) {
+  global $test_data;
+  return $test_data . '_' . $empty_arg;
 }

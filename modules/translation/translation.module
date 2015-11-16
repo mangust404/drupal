@@ -252,6 +252,7 @@ function translation_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
           // Create new translation set, using nid from the source node.
           $tnid = $node->translation_source->nid;
           db_query("UPDATE {node} SET tnid = %d, translate = %d WHERE nid = %d", $tnid, 0, $node->translation_source->nid);
+          func_clear_cache_func_bootstrap('node_nid_load', $node->translation_source->nid);
         }
         db_query("UPDATE {node} SET tnid = %d, translate = %d WHERE nid = %d", $tnid, 0, $node->nid);
         $node->tnid = $tnid;
@@ -264,7 +265,11 @@ function translation_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         db_query("UPDATE {node} SET tnid = %d, translate = %d WHERE nid = %d", $node->tnid, $node->translation['status'], $node->nid);
         if (!empty($node->translation['retranslate'])) {
           // This is the source node, asking to mark all translations outdated.
-          db_query("UPDATE {node} SET translate = 1 WHERE tnid = %d AND nid != %d", $node->tnid, $node->nid);
+          $result = db_query("SELECT nid FROM {node} WHERE tnid = %d AND nid != %d", $node->tnid, $node->nid);
+          while ($translated_node = db_fetch_array($result)) {
+            db_query("UPDATE {node} SET translate = 1 WHERE nid = %d", $translated_node['nid']);
+            func_clear_cache_func_bootstrap('node_nid_load', $translated_node['nid']);
+          }
         }
       }
       break;

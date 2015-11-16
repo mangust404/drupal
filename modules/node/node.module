@@ -430,7 +430,10 @@ function node_get_types($op = 'types', $node = NULL, $reset = FALSE) {
   static $_node_types, $_node_names;
 
   if ($reset || !isset($_node_types)) {
-    list($_node_types, $_node_names) = _node_types_build();
+    if ($reset) {
+      func_clear_cache_func_bootstrap('_node_types_build');
+    }
+    list($_node_types, $_node_names) = func_get_cache_bootstrap('_node_types_build');
   }
 
   if ($node) {
@@ -466,7 +469,7 @@ function node_get_types($op = 'types', $node = NULL, $reset = FALSE) {
  * module-defined node types to the database.
  */
 function node_types_rebuild() {
-  _node_types_build();
+  func_clear_cache_func_bootstrap('_node_types_build');
 
   $node_types = node_get_types('types', NULL, TRUE);
 
@@ -479,7 +482,7 @@ function node_types_rebuild() {
     }
   }
 
-  _node_types_build();
+  func_clear_cache_func_bootstrap('_node_types_build');
 }
 
 /**
@@ -517,6 +520,8 @@ function node_type_save($info) {
     module_invoke_all('node_type', 'insert', $info);
     return SAVED_NEW;
   }
+
+  func_clear_cache_func_bootstrap('_node_types_build');
 }
 
 /**
@@ -528,6 +533,7 @@ function node_type_save($info) {
 function node_type_delete($type) {
   $info = node_get_types('type', $type);
   db_query("DELETE FROM {node_type} WHERE type = '%s'", $type);
+  func_clear_cache_func_bootstrap('_node_types_build');
   module_invoke_all('node_type', 'delete', $info);
 }
 
@@ -543,8 +549,14 @@ function node_type_delete($type) {
  *   The number of nodes whose node type field was modified.
  */
 function node_type_update_nodes($old_type, $type) {
-  db_query("UPDATE {node} SET type = '%s' WHERE type = '%s'", $type, $old_type);
-  return db_affected_rows();
+  $count = 0;
+  $result = db_query("SELECT nid FROM {node} WHERE type = '%s'", $old_type);
+  while ($node = db_fetch_array($result)) {
+    db_query("UPDATE {node} SET type = '%s' WHERE nid = %d", $type, $node['nid']);
+    func_clear_cache_func_bootstrap('node_nid_load', $node['nid']);
+    $count++;
+  }
+  return $count;
 }
 
 /**
@@ -715,6 +727,9 @@ function node_load($param = array(), $revision = NULL, $reset = NULL) {
 
   if ($reset) {
     $nodes = array();
+    if (is_numeric($param)) {
+      func_clear_cache_func_bootstrap('node_nid_load', $param);
+    }
   }
 
   $cachable = ($revision == NULL);
@@ -722,6 +737,9 @@ function node_load($param = array(), $revision = NULL, $reset = NULL) {
   if (is_numeric($param)) {
     if ($cachable) {
       // Is the node statically cached?
+      if (!isset($nodes[$param]) && !$reset) {
+        $nodes[$param] = func_get_cache_bootstrap('node_nid_load', $param);
+      }
       if (isset($nodes[$param])) {
         return is_object($nodes[$param]) ? drupal_clone($nodes[$param]) : $nodes[$param];
       }
@@ -785,6 +803,26 @@ function node_load($param = array(), $revision = NULL, $reset = NULL) {
   }
 
   return $node;
+}
+
+/**
+ * Memoized function helper to load node by nid.
+ *
+ * @param $param
+ *   nid of the node
+ *
+ * @return
+ *   A fully-populated node object.
+ * @see node_load()
+ */
+function node_nid_load($nid) {
+  if (!empty($nid)) {
+    // To prevent infinite loop load nodes by assoc array.
+    return node_load(array('nid' => $nid), FALSE, TRUE);
+  }
+  else {
+    return FALSE;
+  }
 }
 
 /**
@@ -978,7 +1016,7 @@ function node_save(&$node) {
   // Clear the page and block caches.
   cache_clear_all();
 
-  drupal_static_reset('node_load');
+  func_clear_cache_func_bootstrap('node_nid_load', $node->nid);
 }
 
 /**
@@ -1019,6 +1057,8 @@ function node_delete($nid) {
 
     // Clear the page and block caches.
     cache_clear_all();
+
+    func_clear_cache_func_bootstrap('node_nid_load', $node->nid);
 
     // Remove this node from the search index if needed.
     if (function_exists('search_wipe')) {
@@ -1169,7 +1209,6 @@ function theme_node_log_message($log) {
  */
 function node_perm() {
   $perms = array('administer content types', 'administer nodes', 'access content', 'view revisions', 'revert revisions', 'delete revisions');
-
   foreach (node_get_types() as $type) {
     if ($type->module == 'node') {
       $name = check_plain($type->type);
@@ -1363,8 +1402,13 @@ function node_search($op = 'search', $keys = NULL) {
  */
 function node_user($op, &$edit, &$user) {
   if ($op == 'delete') {
-    db_query('UPDATE {node} SET uid = 0 WHERE uid = %d', $user->uid);
+    $nodes_result = db_query("SELECT nid FROM {node} WHERE uid = %d");
+    while ($node = db_fetch_array($nodes_result)) {
+      db_query('UPDATE {node} SET uid = 0 WHERE nid = %d', $node['nid']);
+      func_clear_cache_func_bootstrap('node_nid_load', $node['nid']);
+    }
     db_query('UPDATE {node_revisions} SET uid = 0 WHERE uid = %d', $user->uid);
+
   }
 }
 
@@ -2843,5 +2887,45 @@ function node_unpublish_by_keyword_action($node, $context) {
       watchdog('action', 'Set @type %title to unpublished.', array('@type' => node_get_types('name', $node), '%title' => $node->title));
       break;
     }
+  }
+}
+
+/**
+ * Implementation of hook_cache_setters().
+ *
+ */
+function node_cache_setters() {
+  return array(
+    'node_nid_load' => array(
+      'bin' => 'cache',
+      'args' => array('!nid'),
+    ),
+    '_node_types_build' => array(
+      'bin' => 'cache',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_cache_tokens().
+ *
+ */
+function node_cache_tokens($op, $token = NULL) {
+  switch($op) {
+    case 'list':
+      return array(
+        '!nid' => 'List of all published nodes not older than 1 month',
+      );
+    case 'view':
+      switch($token) {
+        case '!nid':
+          $nids = array();
+          $result = db_query("SELECT nid FROM {node} WHERE status = 1 AND changed > %d", time() - variable_get('node_freshness_timeout', 2592000));
+          while ($array = db_fetch_array($result)) {
+            $nids[] = $array['nid'];
+          }
+          return $nids;
+      }
+      break;
   }
 }

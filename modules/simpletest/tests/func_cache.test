@@ -389,6 +389,30 @@ class CacheFuncTestCase extends DrupalWebTestCase {
     $this->assertEqual($data->data, '1_NULL_0', 'Cache entry exists.');
   }
 
+  function testEmptyTokenListWithoutArgs() {
+    global $test_data;
+    $test_data = $original_data = $this->randomName();
+
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $test_data . '_second');
+
+    $test_data = $this->randomName();
+
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $original_data . '_first', 'Cached data is not changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $original_data . '_second', 'Cached data is not changed.');
+
+    func_clear_cache_func('func_cache_test_empty_token_no_args', 'first');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first', 'First data was changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $original_data . '_second', 'Second cached data is not changed.');
+
+    // At this point, calling func_clear_cache_func('func_cache_test_empty_token_no_args')
+    // will not rebuild first and second items because tokens list for !empty_token is empty.
+
+    func_clear_cache_func('func_cache_test_empty_token_no_args', 'second');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first', 'All data was changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $test_data . '_second', 'All data was changed.');
+  }
+
   /**
    * Test invoking memoized function from file by module-relative path.
    */

@@ -472,6 +472,7 @@ function _book_update_outline(&$node) {
     if (empty($node->book['plid']) || !$parent || $parent['bid'] != $node->book['bid']) {
       $node->book['plid'] = db_result(db_query("SELECT mlid FROM {book} WHERE nid = %d", $node->book['bid']));
       $node->book['parent_mismatch'] = TRUE; // Likely when JS is disabled.
+      func_clear_cache_func_bootstrap('node_nid_load', $parent['bid']);
     }
   }
   if (menu_link_save($node->book)) {
@@ -485,10 +486,25 @@ function _book_update_outline(&$node) {
         book_update_bid($node->book);
       }
     }
+
+    _book_update_outline_cache($node);
+
     return TRUE;
   }
   // Failed to save the menu link
   return FALSE;
+}
+
+/**
+ * Helper function to rebuild outline for a book.
+ */
+function _book_update_outline_cache($node) {
+  // Clear cache for all nodes in the book and book node itself.
+  $result = db_query("SELECT nid FROM {book} WHERE bid = %d", $node->book['bid']);
+  while ($book_node = db_fetch_array($result)) {
+    func_clear_cache_func_bootstrap('node_nid_load', $book_node['nid']);
+  }
+  func_clear_cache_func_bootstrap('node_nid_load', $node->book['bid']);
 }
 
 /**
@@ -678,7 +694,7 @@ function book_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       }
       break;
     case 'view':
-    if (!$teaser) {
+      if (!$teaser) {
         if (!empty($node->book['bid']) && $node->build_mode == NODE_BUILD_NORMAL) {
 
           $node->content['book_navigation'] = array(
@@ -728,6 +744,8 @@ function book_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         }
         menu_link_delete($node->book['mlid']);
         db_query('DELETE FROM {book} WHERE mlid = %d', $node->book['mlid']);
+
+        _book_update_outline_cache($node);
       }
       break;
     case 'prepare':

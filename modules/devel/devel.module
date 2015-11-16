@@ -1395,7 +1395,7 @@ function devel_cache_clear() {
  */
 function devel_cache_get($bin, $cid) {
   $data = cache_get($cid, $bin);
-  if (isset($data->created)) {
+  if (isset($data->created) && !empty($data->created)) {
     $data->created .= ' (' . format_date($data->created) . ')';
   }
   // we print our own page so as to avoid blocks

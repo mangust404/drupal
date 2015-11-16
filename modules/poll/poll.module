@@ -118,6 +118,7 @@ function poll_menu() {
  * Callback function to see if a node is acceptable for poll menu items.
  */
 function _poll_menu_access($node, $perm, $inspect_allowvotes) {
+  poll_prepare_votes($node);
   return user_access($perm) && ($node->type == 'poll') && ($node->allowvotes || !$inspect_allowvotes);
 }
 
@@ -157,6 +158,7 @@ function poll_cron() {
   $result = db_query('SELECT p.nid FROM {poll} p INNER JOIN {node} n ON p.nid = n.nid WHERE (n.created + p.runtime) < '. time() .' AND p.active = 1 AND p.runtime != 0');
   while ($poll = db_fetch_object($result)) {
     db_query("UPDATE {poll} SET active = 0 WHERE nid = %d", $poll->nid);
+    func_clear_cache_func_bootstrap('node_nid_load', $poll->nid);
   }
 }
 
@@ -397,23 +399,6 @@ function poll_load($node) {
     $poll->choice[$choice['chorder']] = $choice;
   }
 
-  // Determine whether or not this user is allowed to vote.
-  $poll->allowvotes = FALSE;
-  if (user_access('vote on polls') && $poll->active) {
-    if ($user->uid) {
-      $result = db_fetch_object(db_query('SELECT chorder FROM {poll_votes} WHERE nid = %d AND uid = %d', $node->nid, $user->uid));
-    }
-    else {
-      $result = db_fetch_object(db_query("SELECT chorder FROM {poll_votes} WHERE nid = %d AND hostname = '%s' AND uid = 0", $node->nid, ip_address()));
-    }
-    if (isset($result->chorder)) {
-      $poll->vote = $result->chorder;
-    }
-    else {
-      $poll->vote = -1;
-      $poll->allowvotes = TRUE;
-    }
-  }
   return $poll;
 }
 
@@ -471,6 +456,7 @@ function poll_update($node) {
       db_query("DELETE FROM {poll_votes} WHERE nid = %d AND chorder = %d", $node->nid, $old_chorder);
     }
   }
+  func_clear_cache_func_bootstrap('node_nid_load', $node->nid);
 }
 
 /**
@@ -483,6 +469,36 @@ function poll_delete($node) {
 }
 
 /**
+ * Load poll votes for current user.
+ * This part cannot be placed in poll_vote() because it has different data for every
+ * logged in and anonymous users.
+ * TODO: Make it cacheable.
+ *
+ * @param $poll object
+ *   poll object
+ */
+function poll_prepare_votes($poll) {
+  global $user;
+  // Determine whether or not this user is allowed to vote.
+  $poll->allowvotes = FALSE;
+  if (user_access('vote on polls') && $poll->active) {
+    if ($user->uid) {
+      $result = db_fetch_object(db_query('SELECT chorder FROM {poll_votes} WHERE nid = %d AND uid = %d', $poll->nid, $user->uid));
+    }
+    else {
+      $result = db_fetch_object(db_query("SELECT chorder FROM {poll_votes} WHERE nid = %d AND hostname = '%s' AND uid = 0", $poll->nid, ip_address()));
+    }
+    if (isset($result->chorder)) {
+      $poll->vote = $result->chorder;
+    }
+    else {
+      $poll->vote = -1;
+      $poll->allowvotes = TRUE;
+    }
+  }
+}
+
+/**
  * Implementation of hook_view().
  *
  * @param $block
@@ -491,6 +507,9 @@ function poll_delete($node) {
  */
 function poll_view($node, $teaser = FALSE, $page = FALSE, $block = FALSE) {
   global $user;
+
+  poll_prepare_votes($node);
+
   $output = '';
   // Special display for side-block
   if ($block) {
@@ -605,6 +624,7 @@ function poll_vote($form, &$form_state) {
   cache_clear_all();
   drupal_set_message(t('Your vote was recorded.'));
 
+  func_clear_cache_func_bootstrap('node_nid_load', $node->nid);
   // Return the user to whatever page they voted from.
 }
 
@@ -760,6 +780,8 @@ function poll_cancel_form(&$form_state, $nid) {
  */
 function poll_cancel($form, &$form_state) {
   $node = node_load($form['#nid']);
+  poll_prepare_votes($node);
+
   global $user;
 
   if ($user->uid) {
@@ -771,6 +793,8 @@ function poll_cancel($form, &$form_state) {
 
   // Subtract from the votes.
   db_query("UPDATE {poll_choices} SET chvotes = chvotes - 1 WHERE nid = %d AND chorder = %d", $node->nid, $node->vote);
+
+  func_clear_cache_func_bootstrap('node_nid_load', $node->nid);
 }
 
 /**

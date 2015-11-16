@@ -1482,7 +1482,7 @@ class CommentPagerTest extends CommentHelperCase {
     $this->drupalGet('comment/reply/' . $node->nid . '/' . $comments[2]->id);
     $comments[] = $this->postComment(NULL, $this->randomName() . ' - This is comment 5', $this->randomName(), TRUE);
 
-    $node = node_load($node->nid);
+    $node = node_load($node->nid, NULL, TRUE);
 
     // At this point, the comment tree is:
     // - 0

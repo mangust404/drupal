@@ -2187,6 +2187,7 @@ function menu_link_save(&$item) {
   }
 
   _menu_clear_page_cache();
+  func_clear_cache_func_bootstrap('cache_menu');
   return $item['mlid'];
 }
 

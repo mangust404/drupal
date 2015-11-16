@@ -789,6 +789,8 @@ function comment_save($edit) {
       }
       _comment_update_node_statistics($edit['nid']);
 
+      func_clear_cache_func_bootstrap('node_nid_load', $edit['nid']);
+
       // Clear the cache so an anonymous user can see his comment being added.
       cache_clear_all();
 

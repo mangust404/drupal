@@ -400,7 +400,11 @@ function taxonomy_del_term($tid) {
       db_query('DELETE FROM {term_hierarchy} WHERE tid = %d', $tid);
       db_query('DELETE FROM {term_relation} WHERE tid1 = %d OR tid2 = %d', $tid, $tid);
       db_query('DELETE FROM {term_synonym} WHERE tid = %d', $tid);
-      db_query('DELETE FROM {term_node} WHERE tid = %d', $tid);
+      $result = db_query("SELECT nid FROM {term_node} WHERE tid = %d", $tid);
+      while ($node = db_fetch_array($result)) {
+        func_clear_cache_func_bootstrap('node_nid_load', $node['nid']);
+        db_query('DELETE FROM {term_node} WHERE nid = %d AND tid = %d', $node['nid'], $tid);
+      }
 
       module_invoke_all('taxonomy', 'delete', 'term', $term);
     }
