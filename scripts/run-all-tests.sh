@@ -124,8 +124,8 @@ foreach ($domains as $domain) {
           $summary_total[$domain]['fail'] += intval($matches[2]);
           $summary_total[$domain]['exception'] += intval($matches[4]);
 
-          if (!empty($matches[6])) {
-            $summary_total[$domain]['error_classes'][] = $matches[6];
+          if (!empty($matches[5])) {
+            $summary_total[$domain]['error_classes'][] = $matches[5];
           }
         }
       }
