@@ -372,6 +372,129 @@ class CacheFuncTestCase extends DrupalWebTestCase {
       array(array(3, 4), 8),
     ), 'Correct results for array token [!test_array, !test]');
 
+    $data = func_cache_get_arguments(array('!empty_test'));
+    $this->assertEqual($data, array(array(NULL)), 'Correct results for tokens [!empty_test]');
+
+    $data = func_cache_get_arguments(array('!test1', '!empty_test'));
+    $this->assertEqual($data, array(
+      array(1, NULL),
+      array(2, NULL),
+      array(3, NULL)
+    ), 'Correct results for tokens [!test1, !empty_test]');
+
+    $data = func_cache_get_arguments(array('!empty_test', '!test1'));
+    $this->assertEqual($data, array(
+      array(NULL, 1),
+      array(NULL, 2),
+      array(NULL, 3)
+    ), 'Correct results for tokens [!test1, !empty_test]');
+
+    $data = func_cache_get_arguments(array('!test1', '!empty_test', array(0, 1)));
+    $this->assertEqual($data, array(
+      array(1, NULL, 0),
+      array(1, NULL, 1),
+      array(2, NULL, 0),
+      array(2, NULL, 1),
+      array(3, NULL, 0),
+      array(3, NULL, 1),
+    ), 'Correct results for tokens [!test1, !empty_test]');
+
+    $data = func_cache_get_arguments(array('!null_test'));
+    $this->assertEqual($data, array(array(NULL)), 'Correct results for tokens [!null_test]');
+
+    $data = func_cache_get_arguments(array('!test1', '!null_test'));
+    $this->assertEqual($data, array(
+      array(1, NULL),
+      array(2, NULL),
+      array(3, NULL)
+    ), 'Correct results for tokens [!test1, !null_test]');
+
+    $data = func_cache_get_arguments(array('!null_test', '!test1'));
+    $this->assertEqual($data, array(
+      array(NULL, 1),
+      array(NULL, 2),
+      array(NULL, 3)
+    ), 'Correct results for tokens [!test1, !null_test]');
+
+    $data = func_cache_get_arguments(array('!test1', '!null_test', array(0, 1)));
+    $this->assertEqual($data, array(
+      array(1, NULL, 0),
+      array(1, NULL, 1),
+      array(2, NULL, 0),
+      array(2, NULL, 1),
+      array(3, NULL, 0),
+      array(3, NULL, 1),
+    ), 'Correct results for tokens [!test1, !null_test]');
+
+    $data = func_cache_get_arguments(array('!false_test'));
+    $this->assertEqual($data, array(array(FALSE)), 'Correct results for tokens [!false_test]');
+
+    $data = func_cache_get_arguments(array('!test1', '!false_test'));
+    $this->assertEqual($data, array(
+      array(1, FALSE),
+      array(2, FALSE),
+      array(3, FALSE)
+    ), 'Correct results for tokens [!test1, !false_test]');
+
+    $data = func_cache_get_arguments(array('!false_test', '!test1'));
+    $this->assertEqual($data, array(
+      array(FALSE, 1),
+      array(FALSE, 2),
+      array(FALSE, 3)
+    ), 'Correct results for tokens [!test1, !false_test]');
+
+    $data = func_cache_get_arguments(array('!test1', '!false_test', array(0, 1)));
+    $this->assertEqual($data, array(
+      array(1, FALSE, 0),
+      array(1, FALSE, 1),
+      array(2, FALSE, 0),
+      array(2, FALSE, 1),
+      array(3, FALSE, 0),
+      array(3, FALSE, 1),
+    ), 'Correct results for tokens [!test1, !false_test]');
+
+    $data = func_cache_get_arguments(array('!parents_test', '!children_test'));
+    $this->assertEqual($data, array(
+      array('first_tree', 'first_tree_item1'),
+      array('first_tree', 'first_tree_item2'),
+      array('first_tree', 'first_subtree'),
+      array('second_tree', 'second_tree_item1'),
+      array('second_tree', 'second_tree_item2'),
+      array('no_tree', NULL),
+    ), 'Correct results for nested tokens [!parents_test, !children_test]');
+
+    $data = func_cache_get_arguments(array('!parents_test', '!children_test', array(0, 1)));
+    $this->assertEqual($data, array(
+      array('first_tree', 'first_tree_item1', 0),
+      array('first_tree', 'first_tree_item1', 1),
+      array('first_tree', 'first_tree_item2', 0),
+      array('first_tree', 'first_tree_item2', 1),
+      array('first_tree', 'first_subtree', 0),
+      array('first_tree', 'first_subtree', 1),
+      array('second_tree', 'second_tree_item1', 0),
+      array('second_tree', 'second_tree_item1', 1),
+      array('second_tree', 'second_tree_item2', 0),
+      array('second_tree', 'second_tree_item2', 1),
+      array('no_tree', NULL, 0),
+      array('no_tree', NULL, 1),
+    ), 'Correct results for nested tokens with params [!parents_test, !children_test, [0, 1]]');
+
+    $data = func_cache_get_arguments(array(array(0, 1), '!parents_test', '!children_test'));
+    $this->assertEqual($data, array(
+      array(0, 'first_tree', 'first_tree_item1'),
+      array(0, 'first_tree', 'first_tree_item2'),
+      array(0, 'first_tree', 'first_subtree'),
+      array(0, 'second_tree', 'second_tree_item1'),
+      array(0, 'second_tree', 'second_tree_item2'),
+      array(0, 'no_tree', NULL),
+      array(1, 'first_tree', 'first_tree_item1'),
+      array(1, 'first_tree', 'first_tree_item2'),
+      array(1, 'first_tree', 'first_subtree'),
+      array(1, 'second_tree', 'second_tree_item1'),
+      array(1, 'second_tree', 'second_tree_item2'),
+      array(1, 'no_tree', NULL),
+    ), 'Correct results for nested tokens with params [[0, 1], !parents_test, !children_test]');
+
   }
 
   /**
@@ -389,6 +512,9 @@ class CacheFuncTestCase extends DrupalWebTestCase {
     $this->assertEqual($data->data, '1_NULL_0', 'Cache entry exists.');
   }
 
+  /**
+   * Test correct cache rebuild when tokens list is empty (e.g. no nodes for !nid).
+   */
   function testEmptyTokenListWithoutArgs() {
     global $test_data;
     $test_data = $original_data = $this->randomName();
@@ -414,6 +540,39 @@ class CacheFuncTestCase extends DrupalWebTestCase {
   }
 
   /**
+   * Test nested token arguments.
+   * Tokens may determine how next tokens will be builded, e.g. for a !menu_name
+   * token second token-argument !menu_link should be returned.
+   */
+  function testNestedTokenArguments() {
+    $func = 'func_cache_test_nested_tokens';
+    func_clear_cache_func('func_cache_test_nested_tokens');
+
+    $cache_setters = func_cache_test_cache_setters();
+
+    $cid = func_cache_get_cid($func, array('first_tree', 'first_tree_item1', 0), $cache_setters[$func]);
+    $data = cache_get($cid, 'cache');
+
+    $this->assertEqual($data->data, array('first' => 'first_tree', 'second' => 'first_tree_item1', 'third' => 0), 'Cache entry exists.');
+
+  }
+
+  /**
+   * Test nested token arguments.
+   */
+  function testMultipleNestedTokenArguments() {
+    $func = 'func_cache_test_multiple_nested_tokens';
+    func_clear_cache_func('func_cache_test_multiple_nested_tokens');
+
+    $cache_setters = func_cache_test_cache_setters();
+
+    $cid = func_cache_get_cid($func, array('first_tree', 'first_subtree', 'subtree_item1', 0), $cache_setters[$func]);
+    $data = cache_get($cid, 'cache');
+
+    $this->assertEqual($data->data, array('first' => 'first_tree', 'second' => 'first_subtree', 'third' => 'subtree_item1', 'fourth' => 0), 'Cache entry exists.');
+  }
+
+  /**
    * Test invoking memoized function from file by module-relative path.
    */
   function testFunctionRelativePath() {
@@ -436,6 +595,7 @@ class CacheFuncTestCase extends DrupalWebTestCase {
     $name = $this->randomName();
     $this->assertFalse(func_get_cache('func_cache_test_setter_func_unexisted_file', $name), 'Function file was not found.');
   }
+
 }
 
 ?>

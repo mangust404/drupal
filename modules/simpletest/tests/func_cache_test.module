@@ -61,34 +61,82 @@ function func_cache_test_cache_setters() {
       'bin' => 'cache',
       'args' => array('!empty_test'),
     ),
+    'func_cache_test_nested_tokens' => array(
+      'title' => 'Test nested tokens generation.',
+      'bin' => 'cache',
+      'args' => array(
+        '!parents_test',
+        '!children_test',
+        array(0, 1), // dummy array to test additional args.
+      ),
+    ),
+    'func_cache_test_multiple_nested_tokens' => array(
+      'title' => 'Test multi-level trees tokens generation.',
+      'bin' => 'cache',
+      'args' => array(
+        '!parents_test',
+        '!children_test',
+        '!nested_children_test', 
+        array(0, 1), // dummy array to test extra args.
+      ),
+    ),
   );
 }
 
 /**
  * Implementation of hook_cache_tokens().
  */
-function func_cache_test_cache_tokens($op, $token = NULL) {
+function func_cache_test_cache_tokens($op, $token = NULL, $parent_token = NULL) {
   switch ($op) {
-    case 'info':
+    case 'list':
       return array(
         '!test' => 'Sample test token', 
         '!test1' => 'Another sample test token', 
-        '!test_array' => 'Token returning array of arrays'
+        '!test_array' => 'Token returning array of arrays',
+        '!parents_test' => 'Parent tokens. Different children tokens may be returned for the different parents.',
+        '!children_test' => array(
+          'title' => 'Children tokens. Dependents on parent.',
+          'parent' => '!parents_test',
+        ),
+        '!nested_children_test' => array(
+          'title' => 'Second-level children tokens. Dependents on !children_test.',
+          'parent' => '!children_test',
+        ),
       );
       break;
     case 'view':
       switch ($token) {
         case '!test':
           return array(9, 8);
-          break;
         case '!test1':
           return array(1, 2, 3);
-          break;
         case '!test_array':
           return array(array(1, 2), array(2, 3), array(3, 4));
-          break;
+        case '!null_test':
+          return NULL;
+        case '!false_test':
+          return FALSE;
         case '!empty_test':
           return array();
+        case '!parents_test':
+          return array('first_tree', 'second_tree', 'no_tree');
+        case '!children_test':
+          switch ($parent_token) {
+            case 'first_tree':
+              return array('first_tree_item1', 'first_tree_item2', 'first_subtree');
+            case 'second_tree':
+              return array('second_tree_item1', 'second_tree_item2');
+            default:
+              return array();
+          }
+          break;
+        case '!nested_children_test':
+          switch ($parent_token) {
+            case 'first_subtree':
+              return array('subtree_item1', 'subtree_item2', 'subtree_item3');
+            default:
+              return array();
+          }
           break;
       }
       break;
@@ -150,4 +198,18 @@ function func_cache_test_empty_token($first, $second, $third) {
 function func_cache_test_empty_token_no_args($empty_arg) {
   global $test_data;
   return $test_data . '_' . $empty_arg;
+}
+
+/**
+ * Memoized function with nested tokens.
+ */
+function func_cache_test_nested_tokens($first, $second = NULL, $third = NULL) {
+  return array('first' => $first, 'second' => $second, 'third' => $third);
+}
+
+/**
+ * Memoized function with multiple levels nested tokens.
+ */
+function func_cache_test_multiple_nested_tokens($first, $second = NULL, $third = NULL, $fourth = NULL) {
+  return array('first' => $first, 'second' => $second, 'third' => $third, 'fourth' => $fourth);
 }

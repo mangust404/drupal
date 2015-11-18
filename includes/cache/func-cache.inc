@@ -14,6 +14,7 @@
  * How many cache entries may be builded by single fork/signle batch operation.
  */
 define('FUNC_PROCESS_CACHE_PORTION_DEFAULT', 5000);
+define('FUNC_CACHE_EMPTY', 'FUNC_CACHE_EMPTY');
 
 /**
  * Helper function.
@@ -58,51 +59,6 @@ function func_cache_get_cid($func, $args = NULL, $func_info = NULL) {
     }
   }
   return $cid;
-}
-
-/**
- * Helper method. Emulate natural join of arrays.
- * Took from http://stackoverflow.com/a/2516779/3675705
- *
- * Example:
- * @code
- * $array1 = array('value1_1', 'value1_2');
- * $array2 = array('value2_1', 'value2_2');
- * func_cache_cartesian($array1, $array2);
- * // Will result:
- * array (
- *   array ('value1_1', 'value2_1'),
- *   array ('value1_1', 'value2_2'),
- *   array ('value1_2', 'value2_1'),
- *   array ('value1_2', 'value2_2')
- * );
- * @endcode
- *
- * Warning! Cartesian product may produce a huge amount of data. Use with care!
- * For example if you have 1000 nids and 10 types you will get 10*1000 = 10000 possible
- * variations. If you have also 100 uids and need a cartesian products for combination of
- * nids, types and uids then variations number will be 10000000. It's more than enough for
- * overflowing your memcache server and completely kill site performance.
- *
- * @param ...
- *   Array of arrays for join.
- *
- * @return
- *   Array of all possible combinations of all elements from input arrays.
- *
- * @see hook_cache_setters()
- */
-function func_cache_cartesian() {
-    $_ = func_get_args();
-    if (count($_) == 0)
-        return array(array());
-    $a = array_shift($_);
-    $c = call_user_func_array(__FUNCTION__, $_);
-    $r = array();
-    foreach($a as $v)
-        foreach($c as $p)
-            $r[] = array_merge(array($v), $p);
-    return $r;
 }
 
 /**
@@ -170,17 +126,22 @@ function func_get_setters_bootstrap() {
  * @return
  *   Array of cache tokens.
  */
-function func_get_tokens($token) {
+function func_get_tokens($token, $parent_token = NULL) {
   $tokens = &drupal_static(__FUNCTION__);
 
-  if (isset($tokens[$token])) {
-    return $tokens[$token];
+  $cid = $token;
+  if (!empty($parent_token)) {
+    $cid .= ':' . $parent_token;
   }
 
-  $tokens[$token] = array();
+  if (isset($tokens[$cid])) {
+    return $tokens[$cid];
+  }
+
+  $tokens[$cid] = array();
 
   if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL) {
-    $tokens[$token] = module_invoke_all('cache_tokens', 'view', $token);
+    $tokens[$cid] = module_invoke_all('cache_tokens', 'view', $token, $parent_token);
   }
   else {
     // Unable to call module_invoke_all() here.
@@ -188,14 +149,14 @@ function func_get_tokens($token) {
       $func_name = $module . '_cache_tokens';
 
       if (function_exists($func_name)) {
-        $result = $func_name('view');
+        $result = $func_name('view', $token, $parent_token);
         if (is_array($result)) {
-          $tokens[$token] = array_merge($tokens, $result);
+          $tokens[$cid] = array_merge($tokens, $result);
         }
       }
     }
   }
-  return $tokens[$token];
+  return $tokens[$cid];
 }
 
 /**
@@ -301,8 +262,10 @@ function func_get_cache() {
         return FALSE;
       }
       $result = call_user_func_array($func, $args);
-      // We don't check the result. It also may be null or false but it should be cached.
-      cache_set($cid, $result, $func_info['bin']);
+      if ($result != FUNC_CACHE_EMPTY) {
+        // We don't check the result. It also may be null or false but it should be cached.
+        cache_set($cid, $result, $func_info['bin']);
+      }
     }
     else {
       // Cache hit.
@@ -321,8 +284,10 @@ function func_get_cache() {
   }
 
   // Store the result in the static cache.
-  $static[$cid] = $result;
-  return $result;
+  if ($result != FUNC_CACHE_EMPTY) {
+    $static[$cid] = $result;
+    return $result;
+  }
 }
 
 /**
@@ -372,8 +337,10 @@ function func_get_cache_bootstrap() {
         return FALSE;
       }
       $result = call_user_func_array($func, $args);
-      // We don't check the result. It also may be null or false but it should be cached.
-      cache_set($cid, $result, $func_info['bin']);
+      if ($result != FUNC_CACHE_EMPTY) {
+        // We don't check the result. It also may be null or false but it should be cached.
+        cache_set($cid, $result, $func_info['bin']);
+      }
     }
     else {
       // Cache hit.
@@ -381,9 +348,11 @@ function func_get_cache_bootstrap() {
     }
   }
 
-  // Store the result in the static cache.
-  $static[$cid] = $result;
-  return $result;
+  if ($result != FUNC_CACHE_EMPTY) {
+    // Store the result in the static cache.
+    $static[$cid] = $result;
+    return $result;
+  }
 }
 
 /**
@@ -405,10 +374,16 @@ function func_get_cache_bootstrap() {
  * @see hook_cache_tokens()
  * @see hook_cache_setters()
  */
-function func_cache_get_arguments($func_args) {
+function func_cache_get_arguments($func_args, $parent_token = NULL) {
+  $tokens_info = &drupal_static('tokens_info', NULL);
+  $tokens_info_complete = &drupal_static('tokens_info_complete', FALSE);
+
   if (!is_array($func_args)) {
     // No need in complex calculations if function arguments is a plain value.
     return array($func_args);
+  }
+  if (count($func_args) == 0) {
+    return array(array());
   }
 
   // Extract tokens from provided arguments.
@@ -428,37 +403,85 @@ function func_cache_get_arguments($func_args) {
     }
   }
 
-  $new_args = array();
+  // Fill tokens info.
+  if (drupal_bootstrap() >= DRUPAL_BOOTSTRAP_FULL) {
+    // When bootstrap is complete the entire tokens registry should be rebuilded.
+    if (!$tokens_info_complete) {
+      $tokens_info = module_invoke_all('cache_tokens', 'list');
+      $tokens_info_complete = TRUE;
+    }
+  }
+  elseif (empty($tokens_info)) {
+    $tokens_info_complete = FALSE;
+    $tokens_info = array();
+    // Unable to call module_invoke_all() here. Invoking hook_cache_tokens only
+    // for system core modules.
+    foreach (array('system', 'user', 'filter', 'block', 'node') as $module) {
+      $func_name = $module . '_cache_tokens';
 
-  // Fetch all possible tokens values for extracted tokens.
-  $token_values = array();
-  foreach($tokens as $token) {
-    $token_values[$token] = func_get_tokens($token);
-    // If no tokens provided make an array with single NULL for correct arguments list.
-    if (empty($token_values[$token])) {
-      $token_values[$token] = array(NULL);
+      if (function_exists($func_name)) {
+        $result = $func_name('list');
+        if (is_array($result)) {
+          $tokens_info = array_merge($tokens_info, $result);
+        }
+      }
     }
   }
 
-  $_token_values = array();
-  foreach($func_args as $index => $arg) {
-    if (is_array($arg)) {
-      $_token_values['param' . $index] = $arg;
-    }
-    else if (is_string($arg) && $arg{0} == '!') {
-      // It's a token parameter.
-      if (empty($token_values[$arg])) {
-        func_cache_notify(t("ERROR: Empty or udefined func_cache token: @token", array('@token' => $arg)));
-      }
-      else {
-        $_token_values[$arg] = $token_values[$arg];
-      }
-    }
-    else {
-      $_token_values['param' . $index] = $arg;
+  $first_arg = array_shift($func_args);
+
+  if (is_string($first_arg) && $first_arg{0} == '!') {
+    // It's a token. Get all possible token values.
+    // Parent token could be specified by previous call of the function.
+    $items = func_get_tokens($first_arg, $parent_token);
+
+    if (empty($items)) {
+      // At least one NULL element should exists.
+      $items = array(NULL);
     }
   }
-  return call_user_func_array('func_cache_cartesian', array_values($_token_values));
+  else if (is_object($first_arg)) {
+    // That shouldn't happen.
+    trigger_error('Object values for tokens are not supported', E_USER_ERROR);
+    return array();
+  }
+  else if (!is_array($first_arg)) {
+    // It's not an array, just single string or numeric parameter.
+    $items = array($first_arg);
+  }
+  else {
+    // It's not a token, just an array of parameters.
+    $items = $first_arg;
+  }
+
+  $result = array();
+
+  $next_arg = reset($func_args);
+
+  if (!empty($next_arg) && is_string($next_arg) && $next_arg{0} == '!' && isset($tokens_info[$next_arg]) && is_array($tokens_info[$next_arg]) && !empty($tokens_info[$next_arg]['parent']) && $tokens_info[$next_arg]['parent'] == $first_arg) {
+    // Work with nested tokens in a special way.
+    foreach ($items as $item) {
+      // Get all subelements recursively for the current item as parent token.
+      $subitems = func_cache_get_arguments($func_args, $item);
+
+      // Append all subitems to the result.
+      foreach ($subitems as $subitem) {
+        $result[] = array_merge(array($item), $subitem);
+      }
+    }
+  }
+  else {
+    // Get all subelements recursively. No parent token.
+    $subitems = func_cache_get_arguments($func_args);
+
+    // Append all subitems to the result.
+    foreach ($items as $item) {
+      foreach ($subitems as $subitem) {
+        $result[] = array_merge(array($item), $subitem);
+      }
+    }
+  }
+  return $result;
 }
 
 /**
@@ -485,8 +508,10 @@ function func_rebuild_args($func, $func_info, $args, $bootstrap = FALSE) {
 
     // Get function results and set cache.
     $result = call_user_func_array($func, $arg);
-    cache_set($_cid, $result, $func_info['bin']);
-    $static[$_cid] = $result;
+    if ($result != FUNC_CACHE_EMPTY) {
+      cache_set($_cid, $result, $func_info['bin']);
+      $static[$_cid] = $result;
+    }
   }
 }
 
@@ -635,8 +660,10 @@ function func_process_cache($bin = NULL, $batch_func = NULL, $batch_offset = NUL
               print "\rcid=$part ($count of $overall)$suffix";
             }
             $result = call_user_func_array($func, $arg);
-            cache_set($_cid, $result, $func_info['bin']);
-            $static[$_cid] = $result;
+            if ($result != FUNC_CACHE_EMPTY) {
+              cache_set($_cid, $result, $func_info['bin']);
+              $static[$_cid] = $result;
+            }
           }
         }
         if (empty($func_info['args'])) {
@@ -644,8 +671,10 @@ function func_process_cache($bin = NULL, $batch_func = NULL, $batch_offset = NUL
           // Rebuild only if there is no data or it's expired.
           if (empty($data) || (!empty($func_info['lifetime']) && $func_info['lifetime'] > 0 && $data->created < time() - $func_info['lifetime'])) {
             $result = call_user_func_array($func);
-            cache_set($func, $result, $func_info['bin']);
-            $static[$func] = $result;
+            if ($result != FUNC_CACHE_EMPTY) {
+              cache_set($func, $result, $func_info['bin']);
+              $static[$func] = $result;
+            }
           }
         }
         if (drupal_is_cli()) {
@@ -670,8 +699,10 @@ function func_process_cache($bin = NULL, $batch_func = NULL, $batch_offset = NUL
         if (drupal_is_cli()) print "regenerate: $func\n";
         $result = $func();
 
-        cache_set($func, $result, $func_info['bin']);
-        $static[$func] = $result;
+        if ($result != FUNC_CACHE_EMPTY) {
+          cache_set($func, $result, $func_info['bin']);
+          $static[$func] = $result;
+        }
       }
     }
   }
@@ -752,9 +783,10 @@ function func_clear_cache_func() {
     $_cid = func_cache_get_cid($func, $args, $func_info);
     $result = call_user_func_array($func, $args);
 
-    cache_set($_cid, $result, $func_info['bin']);
-
-    $static[$_cid] = $result;
+    if ($result != FUNC_CACHE_EMPTY) {
+      cache_set($_cid, $result, $func_info['bin']);
+      $static[$_cid] = $result;
+    }
   }
 }
 
@@ -819,9 +851,10 @@ function func_clear_cache_func_bootstrap() {
     $_cid = func_cache_get_cid($func, $args, $func_info);
     $result = call_user_func_array($func, $args);
 
-    cache_set($_cid, $result, $func_info['bin']);
-
-    $static[$_cid] = $result;
+    if ($result != FUNC_CACHE_EMPTY) {
+      cache_set($_cid, $result, $func_info['bin']);
+      $static[$_cid] = $result;
+    }
   }
 }
 
@@ -872,9 +905,10 @@ function func_clear_cache_bin($bin) {
         // Rebuild a basic function cache (without arguments).
         $result = call_user_func_array($func, $args);
 
-        cache_set($cid, $result, $func_info['bin']);
-
-        $static[$cid] = $result;
+        if ($result != FUNC_CACHE_EMPTY) {
+          cache_set($cid, $result, $func_info['bin']);
+          $static[$cid] = $result;
+        }
       }
     }
   }
