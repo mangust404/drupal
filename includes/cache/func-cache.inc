@@ -8,6 +8,9 @@
  *
  * "Func Cache" engine intended to provide a transparent memoization of system and user
  * functions which should make database calls or a costly calculations.
+ *
+ * TODO: DRY bootstrap and main functions.
+ *
  */
 
 /**
@@ -442,6 +445,10 @@ function func_cache_get_arguments($func_args, $parent_token = NULL) {
   }
   else if (is_object($first_arg)) {
     // That shouldn't happen.
+    // Unable to handle object values due they can't be converted to string
+    // when generating cid for cache entry.
+    // TODO: objects may be supported but only when there will be a good way
+    // to identify objects (convert to string).
     trigger_error('Object values for tokens are not supported', E_USER_ERROR);
     return array();
   }
@@ -456,8 +463,10 @@ function func_cache_get_arguments($func_args, $parent_token = NULL) {
 
   $result = array();
 
+  // Checking for the next argument.
   $next_arg = reset($func_args);
 
+  // If next argument is a token and it has a 'parent' definition.
   if (!empty($next_arg) && is_string($next_arg) && $next_arg{0} == '!' && isset($tokens_info[$next_arg]) && is_array($tokens_info[$next_arg]) && !empty($tokens_info[$next_arg]['parent']) && $tokens_info[$next_arg]['parent'] == $first_arg) {
     // Work with nested tokens in a special way.
     foreach ($items as $item) {
@@ -912,4 +921,150 @@ function func_clear_cache_bin($bin) {
       }
     }
   }
+}
+
+/**
+ * Alter a single cache entry.
+ *
+ * Altering should be used only for setting single element for the big array cache for the
+ * purpose of saving CPU and DB calls by not rebuilding entire cache entry.
+ * Using of alter for rebuilding many items is a VERY BAD IDEA. You should consider of rebuilding
+ * the whole array if you need to alter more than 1-2 items.
+ *
+ * @param $func string
+ *   memoize function name
+ * @param $data mixed
+ *   altering data. Different types have different behavior:
+ *   - If both cache entry and data are assoc arrays then cache entry will be merged with data
+ *     (cache keys will be rewritten by data keys). Keys with NULL values will be removed from
+ *     the cache entry.
+ *   - If both cache entry and data are plain arrays then cache entry will be merged with data
+ *     (data values will be added to cache values).
+ *   - If cache entry is an object then it will be filled with keys and values provided by data.
+ *   - As a fallback behavior cache entry will be replaced by provided data (not recommended, use 
+ *     func_clear_cache_func() instead).
+ * @param ...
+ *   arguments to get cache entry
+ * @return mixed
+ *   modified cache entry.
+ */
+function func_alter_cache($func, $data) {
+  $static = &drupal_static('func_get_cache');
+  $cache_sets = &drupal_static(__FUNCTION__, array());
+
+  // Get all passed args.
+  $args = array_slice(func_get_args(), 2);
+
+  // Prepare cache setters registry.
+  $cache_setters = func_get_setters();
+
+  // Prepare cached function hook info.
+  $func_info = &$cache_setters[$func];
+  $cid = func_cache_get_cid($func, $args, $func_info);
+ 
+  // Get existing cache entry. It will be builded if not exists.
+  array_unshift($args, $func);
+  $existing_data = call_user_func_array('func_get_cache', $args);
+
+  // Prepare new data.
+  if (is_array($existing_data) && is_array($data)) {
+    $new_data = &$existing_data;
+    // If both existing and new data are arrays, merging them.
+    foreach ($data as $key => $value) {
+      if (is_null($value)) {
+        if (isset($new_data[$key])) {
+          unset($new_data[$key]);
+        }
+      }
+      else {
+        $new_data[$key] = $value;
+      }
+    }
+  }
+  else if (is_object($existing_data) && is_array($data)) {
+    // If existing data is an object and provided altering data is array then
+    // consider data as attributes list that should be changed in the stored object.
+    $new_data = $existing_data;
+    foreach ($data as $key => $value) {
+      if ($value === NULL) {
+        unset($new_data->$key);
+      }
+      else {
+        $new_data->$key = $value;
+      }
+    }
+  }
+  else {
+    // When there is no data or data is a plain value then just replace stored data
+    // with a new one.
+    $new_data = $data;
+  }
+
+  cache_set($cid, $new_data, $func_info['bin']);
+  $static[$cid] = $new_data;
+
+  return $new_data;
+}
+
+/**
+ * Alter a single system core cache entry.
+ *
+ * @see func_alter_cache()
+ */
+function func_alter_cache_bootstrap($func, $data) {
+  $static = &drupal_static('func_get_cache_bootstrap');
+  $cache_sets = &drupal_static(__FUNCTION__, array());
+
+  // Get all passed args.
+  $args = array_slice(func_get_args(), 2);
+
+  // Prepare cache setters registry.
+  $cache_setters = func_get_setters_bootstrap();
+
+  // Prepare cached function hook info.
+  $func_info = &$cache_setters[$func];
+  $cid = func_cache_get_cid($func, $args, $func_info);
+ 
+  // Get existing cache entry. It will be builded if not exists.
+  array_unshift($args, $func);
+  $existing_data = call_user_func_array('func_get_cache_bootstrap', $args);
+
+  // Prepare new data.
+  if (is_array($existing_data) && is_array($data)) {
+    $new_data = &$existing_data;
+    // If both existing and new data are arrays, merging them.
+    foreach ($data as $key => $value) {
+      if (is_null($value)) {
+        if (isset($new_data[$key])) {
+          unset($new_data[$key]);
+        }
+      }
+      else {
+        $new_data[$key] = $value;
+      }
+    }
+  }
+  else if (is_object($existing_data) && is_array($data)) {
+    // If existing data is an object and provided altering data is array then
+    // consider data as attributes list that should be changed in the stored object.
+    $new_data = $existing_data;
+    foreach ($data as $key => $value) {
+      if ($value === NULL) {
+        unset($new_data->$key);
+      }
+      else {
+        $new_data->$key = $value;
+      }
+    }
+  }
+  else {
+    // When there is no data or data is a plain value then just replace stored data
+    // with a new one.
+    $new_data = $data;
+  }
+
+  cache_set($cid, $new_data, $func_info['bin']);
+  $static[$cid] = $new_data;
+
+  return $new_data;
 }

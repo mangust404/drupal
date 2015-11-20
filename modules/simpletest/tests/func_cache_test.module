@@ -80,6 +80,10 @@ function func_cache_test_cache_setters() {
         array(0, 1), // dummy array to test extra args.
       ),
     ),
+    'func_cache_alter_test' => array(
+      'title' => 'Dummy function to test correct cache altering',
+      'bin' => 'cache',
+    ),
   );
 }
 
@@ -218,4 +222,12 @@ function func_cache_test_nested_tokens($first, $second = NULL, $third = NULL) {
  */
 function func_cache_test_multiple_nested_tokens($first, $second = NULL, $third = NULL, $fourth = NULL) {
   return array('first' => $first, 'second' => $second, 'third' => $third, 'fourth' => $fourth);
+}
+
+/**
+ * Memoized function to test altering cache.
+ */
+function func_cache_alter_test() {
+  global $test_data;
+  return $test_data;
 }

@@ -635,3 +635,112 @@ class CacheFuncArgumentsTestCase extends DrupalWebTestCase {
 
   }
 }
+
+class CacheFuncAlterTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Test func cache altering functionality',
+      'description' => 'Functional tests for func_alter_cache_bootstrap().',
+      'group' => 'Cache',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('func_cache_test');
+  }
+
+  /**
+   * Test altering of the assoc array.
+   */
+  function testFuncCacheAssocAlter() {
+    global $test_data;
+
+    $first = $this->randomName();
+    $second = $this->randomName();
+    $test_data = array(
+      'first' => $first,
+      'second' => $second,
+    );
+
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data);
+
+    $new_first = $this->randomName();
+    $test_data['first'] = $new_first;
+    $new_data = func_alter_cache('func_cache_alter_test', array('first' => $new_first));
+    $this->assertEqual($new_data, $test_data, 'First element was altered.');
+
+    // Clear static cache to check the real cached value.
+    drupal_static_reset('func_get_cache');
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data, 'First element was altered in cache.');
+
+    // Test element deleting.
+    unset($test_data['first']);
+    $new_data = func_alter_cache('func_cache_alter_test', array('first' => NULL));
+    $this->assertEqual($new_data, $test_data, 'First element was removed.');
+
+    // Clear static cache to check the real cached value.
+    drupal_static_reset('func_get_cache');
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data, 'First element was removed from cache.');
+  }
+
+  /**
+   * Test altering of the object.
+   */
+  function testFuncCacheObjectAlter() {
+    global $test_data;
+
+    $first = $this->randomName();
+    $second = $this->randomName();
+    $test_data = (object)array(
+      'first' => $first,
+      'second' => $second,
+    );
+
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data);
+
+    $new_first = $this->randomName();
+    $test_data->first = $new_first;
+    $new_data = func_alter_cache('func_cache_alter_test', array('first' => $new_first));
+    $this->assertEqual($new_data, $test_data, 'Attribute was altered.');
+
+    // Clear static cache to check the real cached value.
+    drupal_static_reset('func_get_cache');
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data, 'Attribute was altered in cache.');
+
+    // Test element deleting.
+    unset($test_data->first);
+    $new_data = func_alter_cache('func_cache_alter_test', array('first' => NULL));
+    $this->assertEqual($new_data, $test_data, 'Attribute was removed.');
+
+    // Clear static cache to check the real cached value.
+    drupal_static_reset('func_get_cache');
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data, 'Attribute was removed from cache.');
+  }
+
+  /**
+   * Test altering of the plain string value.
+   */
+  function testFuncCachePlainAlter() {
+    global $test_data;
+
+    $test_data = $this->randomName();
+
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data);
+
+    $test_data = $this->randomName();
+    $new_data = func_alter_cache('func_cache_alter_test', $test_data);
+    $this->assertEqual($new_data, $test_data, 'Item was altered.');
+
+    // Clear static cache to check the real cached value.
+    drupal_static_reset('func_get_cache');
+    $cached_data = func_get_cache('func_cache_alter_test');
+    $this->assertEqual($cached_data, $test_data, 'Attribute was altered in cache.');
+  }
+}
