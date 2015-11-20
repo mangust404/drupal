@@ -196,6 +196,45 @@ class CacheFuncTestCase extends DrupalWebTestCase {
   }
 
   /**
+   * Test invoking memoized function from file by module-relative path.
+   */
+  function testFunctionRelativePath() {
+    $name = $this->randomName();
+    $this->assertEqual($name, func_get_cache('func_cache_test_setter_func_relative_file', $name), 'Function file was loaded correctly.');
+  }
+
+  /**
+   * Test invoking memoized function from file by absolute path.
+   */
+  function testFunctionAbsolutePath() {
+    $name = $this->randomName();
+    $this->assertEqual($name, func_get_cache('func_cache_test_setter_func_absolute_file', $name), 'Function file was loaded correctly.');
+  }
+
+  /**
+   * Test invoking memoized function from file by absolute path.
+   */
+  function testFunctionUnexistedFile() {
+    $name = $this->randomName();
+    $this->assertFalse(func_get_cache('func_cache_test_setter_func_unexisted_file', $name), 'Function file was not found.');
+  }
+
+}
+
+class CacheFuncTokensTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Test func cache tokens functionality',
+      'description' => 'Functional tests for func_get_tokens().',
+      'group' => 'Cache',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('func_cache_test');
+  }
+
+  /**
    * Test cache entries with basic tokens.
    */
   function testCacheFuncTokens() {
@@ -299,6 +338,95 @@ class CacheFuncTestCase extends DrupalWebTestCase {
     $this->assertEqual(func_get_cache('func_cache_test_token_func3', 1, 9, 1), $test_data . '_1_9_1', 'Data was changed.');
     $this->assertEqual(func_get_cache('func_cache_test_token_func3', 2, 9, 0), $prev_data . '_2_9_0', 'Data was not changed.');
     $this->assertEqual(func_get_cache('func_cache_test_token_func3', 2, 9, 1), $prev_data . '_2_9_1', 'Data was not changed.');
+  }
+
+  /**
+   * Test correct cache rebuild with empty tokens list.
+   */
+  function testEmptyTokenList() {
+    func_process_cache('cache');
+
+    $cache_setters = func_cache_test_cache_setters();
+
+    $func = 'func_cache_test_empty_token';
+    $cid = func_cache_get_cid($func, array(1, NULL, 0), $cache_setters[$func]);
+    $data = cache_get($cid, 'cache');
+
+    $this->assertEqual($data->data, '1_NULL_0', 'Cache entry exists.');
+  }
+
+  /**
+   * Test correct cache rebuild when tokens list is empty (e.g. no nodes for !nid).
+   */
+  function testEmptyTokenListWithoutArgs() {
+    global $test_data;
+    $test_data = $original_data = $this->randomName();
+
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $test_data . '_second');
+
+    $test_data = $this->randomName();
+
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $original_data . '_first', 'Cached data is not changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $original_data . '_second', 'Cached data is not changed.');
+
+    func_clear_cache_func('func_cache_test_empty_token_no_args', 'first');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first', 'First data was changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $original_data . '_second', 'Second cached data is not changed.');
+
+    // At this point, calling func_clear_cache_func('func_cache_test_empty_token_no_args')
+    // will not rebuild first and second items because tokens list for !empty_token is empty.
+
+    func_clear_cache_func('func_cache_test_empty_token_no_args', 'second');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first', 'All data was changed.');
+    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $test_data . '_second', 'All data was changed.');
+  }
+
+  /**
+   * Test nested token arguments.
+   * Tokens may determine how next tokens will be builded, e.g. for a !menu_name
+   * token second token-argument !menu_link should be returned.
+   */
+  function testNestedTokenArguments() {
+    $func = 'func_cache_test_nested_tokens';
+    func_clear_cache_func('func_cache_test_nested_tokens');
+
+    $cache_setters = func_cache_test_cache_setters();
+
+    $cid = func_cache_get_cid($func, array('first_tree', 'first_tree_item1', 0), $cache_setters[$func]);
+    $data = cache_get($cid, 'cache');
+
+    $this->assertEqual($data->data, array('first' => 'first_tree', 'second' => 'first_tree_item1', 'third' => 0), 'Cache entry exists.');
+
+  }
+
+  /**
+   * Test nested token arguments.
+   */
+  function testMultipleNestedTokenArguments() {
+    $func = 'func_cache_test_multiple_nested_tokens';
+    func_clear_cache_func('func_cache_test_multiple_nested_tokens');
+
+    $cache_setters = func_cache_test_cache_setters();
+
+    $cid = func_cache_get_cid($func, array('first_tree', 'first_subtree', 'subtree_item1', 0), $cache_setters[$func]);
+    $data = cache_get($cid, 'cache');
+
+    $this->assertEqual($data->data, array('first' => 'first_tree', 'second' => 'first_subtree', 'third' => 'subtree_item1', 'fourth' => 0), 'Cache entry exists.');
+  }
+}
+
+class CacheFuncArgumentsTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Test func cache arguments filling functionality',
+      'description' => 'Unit tests for func_cache_get_arguments().',
+      'group' => 'Cache',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('func_cache_test');
   }
 
   /**
@@ -453,6 +581,16 @@ class CacheFuncTestCase extends DrupalWebTestCase {
       array(3, FALSE, 1),
     ), 'Correct results for tokens [!test1, !false_test]');
 
+    $data = func_cache_get_arguments(array('!zero_string_array'));
+    $this->assertEqual($data, array(
+      array('0'),
+    ), 'Correct results for token !zero_string_array');
+
+    $data = func_cache_get_arguments(array('!zero_int_array'));
+    $this->assertEqual($data, array(
+      array('0'),
+    ), 'Correct results for token !zero_int_array');
+
     $data = func_cache_get_arguments(array('!parents_test', '!children_test'));
     $this->assertEqual($data, array(
       array('first_tree', 'first_tree_item1'),
@@ -496,106 +634,4 @@ class CacheFuncTestCase extends DrupalWebTestCase {
     ), 'Correct results for nested tokens with params [[0, 1], !parents_test, !children_test]');
 
   }
-
-  /**
-   * Test correct cache rebuild with empty tokens list.
-   */
-  function testEmptyTokenList() {
-    func_process_cache('cache');
-
-    $cache_setters = func_cache_test_cache_setters();
-
-    $func = 'func_cache_test_empty_token';
-    $cid = func_cache_get_cid($func, array(1, NULL, 0), $cache_setters[$func]);
-    $data = cache_get($cid, 'cache');
-
-    $this->assertEqual($data->data, '1_NULL_0', 'Cache entry exists.');
-  }
-
-  /**
-   * Test correct cache rebuild when tokens list is empty (e.g. no nodes for !nid).
-   */
-  function testEmptyTokenListWithoutArgs() {
-    global $test_data;
-    $test_data = $original_data = $this->randomName();
-
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first');
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $test_data . '_second');
-
-    $test_data = $this->randomName();
-
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $original_data . '_first', 'Cached data is not changed.');
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $original_data . '_second', 'Cached data is not changed.');
-
-    func_clear_cache_func('func_cache_test_empty_token_no_args', 'first');
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first', 'First data was changed.');
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $original_data . '_second', 'Second cached data is not changed.');
-
-    // At this point, calling func_clear_cache_func('func_cache_test_empty_token_no_args')
-    // will not rebuild first and second items because tokens list for !empty_token is empty.
-
-    func_clear_cache_func('func_cache_test_empty_token_no_args', 'second');
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'first'), $test_data . '_first', 'All data was changed.');
-    $this->assertEqual(func_get_cache('func_cache_test_empty_token_no_args', 'second'), $test_data . '_second', 'All data was changed.');
-  }
-
-  /**
-   * Test nested token arguments.
-   * Tokens may determine how next tokens will be builded, e.g. for a !menu_name
-   * token second token-argument !menu_link should be returned.
-   */
-  function testNestedTokenArguments() {
-    $func = 'func_cache_test_nested_tokens';
-    func_clear_cache_func('func_cache_test_nested_tokens');
-
-    $cache_setters = func_cache_test_cache_setters();
-
-    $cid = func_cache_get_cid($func, array('first_tree', 'first_tree_item1', 0), $cache_setters[$func]);
-    $data = cache_get($cid, 'cache');
-
-    $this->assertEqual($data->data, array('first' => 'first_tree', 'second' => 'first_tree_item1', 'third' => 0), 'Cache entry exists.');
-
-  }
-
-  /**
-   * Test nested token arguments.
-   */
-  function testMultipleNestedTokenArguments() {
-    $func = 'func_cache_test_multiple_nested_tokens';
-    func_clear_cache_func('func_cache_test_multiple_nested_tokens');
-
-    $cache_setters = func_cache_test_cache_setters();
-
-    $cid = func_cache_get_cid($func, array('first_tree', 'first_subtree', 'subtree_item1', 0), $cache_setters[$func]);
-    $data = cache_get($cid, 'cache');
-
-    $this->assertEqual($data->data, array('first' => 'first_tree', 'second' => 'first_subtree', 'third' => 'subtree_item1', 'fourth' => 0), 'Cache entry exists.');
-  }
-
-  /**
-   * Test invoking memoized function from file by module-relative path.
-   */
-  function testFunctionRelativePath() {
-    $name = $this->randomName();
-    $this->assertEqual($name, func_get_cache('func_cache_test_setter_func_relative_file', $name), 'Function file was loaded correctly.');
-  }
-
-  /**
-   * Test invoking memoized function from file by absolute path.
-   */
-  function testFunctionAbsolutePath() {
-    $name = $this->randomName();
-    $this->assertEqual($name, func_get_cache('func_cache_test_setter_func_absolute_file', $name), 'Function file was loaded correctly.');
-  }
-
-  /**
-   * Test invoking memoized function from file by absolute path.
-   */
-  function testFunctionUnexistedFile() {
-    $name = $this->randomName();
-    $this->assertFalse(func_get_cache('func_cache_test_setter_func_unexisted_file', $name), 'Function file was not found.');
-  }
-
 }
-
-?>

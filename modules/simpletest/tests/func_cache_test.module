@@ -93,6 +93,8 @@ function func_cache_test_cache_tokens($op, $token = NULL, $parent_token = NULL) 
         '!test' => 'Sample test token', 
         '!test1' => 'Another sample test token', 
         '!test_array' => 'Token returning array of arrays',
+        '!zero_string_array' => 'Test array filled with one string zero value.',
+        '!zero_int_array' => 'Test array filled with one integer zero value.',
         '!parents_test' => 'Parent tokens. Different children tokens may be returned for the different parents.',
         '!children_test' => array(
           'title' => 'Children tokens. Dependents on parent.',
@@ -112,6 +114,10 @@ function func_cache_test_cache_tokens($op, $token = NULL, $parent_token = NULL) 
           return array(1, 2, 3);
         case '!test_array':
           return array(array(1, 2), array(2, 3), array(3, 4));
+        case '!zero_string_array':
+          return array('0');
+        case '!zero_int_array':
+          return array(0);
         case '!null_test':
           return NULL;
         case '!false_test':
