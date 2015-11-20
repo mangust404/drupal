@@ -443,7 +443,7 @@ function devel_silent() {
 
 function devel_xhprof_enable() {
   global $current_test_class;
-  if (!empty($current_test_class) && extension_loaded('xhprof') && variable_get('devel_xhprof_enabled', FALSE)) {
+  if (empty($current_test_class) && extension_loaded('xhprof') && variable_get('devel_xhprof_enabled', FALSE)) {
     if (($path = variable_get('devel_xhprof_directory', '')) &&
         (include_once $path . '/xhprof_lib/utils/xhprof_lib.php') &&
         (include_once $path . '/xhprof_lib/utils/xhprof_runs.php')) {
