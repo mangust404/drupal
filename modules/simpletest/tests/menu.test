@@ -334,6 +334,8 @@ class MenuRouterTestCase extends DrupalWebTestCase {
     // Move second link to the main-menu, to test caching later on.
     db_query("UPDATE {menu_links} SET menu_name = 'main-menu' WHERE link_title = 'Menu link #1-1' AND customized = 0 AND module = 'menu_test'");
     menu_cache_clear('main-menu');
+    // When change menu_name both menus cache should be rebuilded.
+    menu_cache_clear('navigation');
 
     // Load front page.
     $this->drupalGet('node');

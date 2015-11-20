@@ -315,20 +315,19 @@ function menu_get_item($path = NULL, $router_item = NULL) {
     $parts = array_slice($original_map, 0, MENU_MAX_PARTS);
     list($ancestors, $placeholders) = menu_get_ancestors($parts);
 
-    // Find a smallest ancestor, it will be a cache id
-    end($ancestors);
-    $root_ancestor = current($ancestors);
+    // Find a first arg of the first ancestor, it will be a cache id.
+    $first_arg = current(explode('/', reset($ancestors)));
 
     $router_item = NULL;
     
-    $cached_router_items = func_get_cache_bootstrap('_menu_get_items', $root_ancestor);
+    // All cached router items are sorted by fit descendantly.
+    $cached_router_items = func_get_cache_bootstrap('_menu_router_index', $first_arg);
 
-    foreach($cached_router_items as $path => $_router_item) {
-      foreach($ancestors as $ancestor) {
-        if($path == $ancestor) {
-          $router_item = $_router_item;
-          break(2);
-        }
+    // Find first menu router item with best match.
+    foreach($ancestors as $ancestor) {
+      if (isset($cached_router_items[$ancestor])) {
+        $router_item = $cached_router_items[$ancestor];
+        break;
       }
     }
 
@@ -367,7 +366,7 @@ function menu_get_item($path = NULL, $router_item = NULL) {
  *   Keys are router item paths.
  * @see menu_get_items()
  */
-function _menu_get_items($ancestor) {
+function _menu_router_index($ancestor) {
   $router_items = array();
   $r = db_query("SELECT * FROM {menu_router} WHERE path = '%s' OR path LIKE '%s/%%' ORDER BY fit DESC", $ancestor, $ancestor);
   while($ar = db_fetch_array($r)) {
@@ -703,7 +702,9 @@ function menu_tail_to_arg($arg, $map, $index) {
  *     here to $item['localized_options'] by _menu_item_localize().
  */
 function _menu_link_translate(&$item) {
-  $item['options'] = unserialize($item['options']);
+  if (is_string($item['options'])) {
+    $item['options'] = unserialize($item['options']);
+  }
   if ($item['external']) {
     $item['access'] = 1;
     $map = array();
@@ -953,102 +954,205 @@ function menu_tree_all_data($menu_name = 'navigation', $item = NULL) {
  *   same structure described for the top-level array.
  */
 function menu_tree_page_data($menu_name = 'navigation') {
-  $tree = &drupal_static(__FUNCTION__, array());
-
   // Load the menu item corresponding to the current page.
   if ($item = menu_get_item()) {
-    // Generate a cache ID (cid) specific for this page.
-    $cid = 'links:'. $menu_name .':page-cid:'. $item['href'] .':'. (int)$item['access'];
+    $mlids = NULL;
 
-    if (!isset($tree[$cid])) {
-      // If the static variable doesn't have the data, check {cache_menu}.
-      $cache = cache_get($cid, 'cache_menu');
-      if ($cache && isset($cache->data)) {
-        // If the cache entry exists, it will just be the cid for the actual data.
-        // This avoids duplication of large amounts of data.
-        $cache = cache_get($cache->data, 'cache_menu');
-        if ($cache && isset($cache->data)) {
-          $data = $cache->data;
+    if ($item['access']) {
+      // Translate router item to menu link with mlid and parents by using
+      // indexed menu items list.
+      $menu_links_index = func_get_cache_bootstrap('_menu_links_index', $menu_name);
+
+      $link_item = NULL;
+      if (isset($menu_links_index[$item['href']])) {
+        // Menu item found in menu index.
+        $link_item = $menu_links_index[$item['href']];
+      }
+      if (empty($link_item) && drupal_is_front_page() && isset($menu_links_index['<front>'])) {
+        $link_item = $menu_links_index['<front>'];
+      }
+      if (empty($link_item) && !empty($item['tab_root']) && isset($menu_links_index[$item['tab_root']])) {
+        // If no link exists, we may be on a local task that's not in the links.
+        // TODO: Handle the case like a local task on a specific node in the menu.
+        $link_item = $menu_links_index[$item['tab_root']];
+      }
+
+      if ($link_item) {
+        // Collect parents from $link_item.
+        $parents = array_filter(array($link_item['p1'], $link_item['p2'], $link_item['p3'], $link_item['p4'], $link_item['p5'], $link_item['p6'], $link_item['p7'], $link_item['p8']));
+        if (!empty($parents)) {
+          $mlids = func_get_cache_bootstrap('_menu_tree_page_data', $menu_name, $parents);
         }
       }
-      // If the tree data was not in the cache, $data will be NULL.
-      if (!isset($data)) {
-        // Build and run the query, and build the tree.
-        if ($item['access']) {
-          // Check whether a menu link exists that corresponds to the current path.
-          $args = array($menu_name, $item['href']);
-          $placeholders = "'%s'";
-          if (drupal_is_front_page()) {
-            $args[] = '<front>';
-            $placeholders .= ", '%s'";
-          }
-          $parents = db_fetch_array(db_query("SELECT p1, p2, p3, p4, p5, p6, p7, p8 FROM {menu_links} WHERE menu_name = '%s' AND link_path IN (". $placeholders .")", $args));
-
-          if (empty($parents)) {
-            // If no link exists, we may be on a local task that's not in the links.
-            // TODO: Handle the case like a local task on a specific node in the menu.
-            $parents = db_fetch_array(db_query("SELECT p1, p2, p3, p4, p5, p6, p7, p8 FROM {menu_links} WHERE menu_name = '%s' AND link_path = '%s'", $menu_name, $item['tab_root']));
-          }
-          // We always want all the top-level links with plid == 0.
-          $parents[] = '0';
-
-          // Use array_values() so that the indices are numeric for array_merge().
-          $args = $parents = array_unique(array_values($parents));
-          $placeholders = implode(', ', array_fill(0, count($args), '%d'));
-          $expanded = variable_get('menu_expanded', array());
-          // Check whether the current menu has any links set to be expanded.
-          if (in_array($menu_name, $expanded)) {
-            // Collect all the links set to be expanded, and then add all of
-            // their children to the list as well.
-            do {
-              $result = db_query("SELECT mlid FROM {menu_links} WHERE menu_name = '%s' AND expanded = 1 AND has_children = 1 AND plid IN (". $placeholders .') AND mlid NOT IN ('. $placeholders .')', array_merge(array($menu_name), $args, $args));
-              $num_rows = FALSE;
-              while ($item = db_fetch_array($result)) {
-                $args[] = $item['mlid'];
-                $num_rows = TRUE;
-              }
-              $placeholders = implode(', ', array_fill(0, count($args), '%d'));
-            } while ($num_rows);
-          }
-          array_unshift($args, $menu_name);
-        }
-        else {
-          // Show only the top-level menu items when access is denied.
-          $args = array($menu_name, '0');
-          $placeholders = '%d';
-          $parents = array();
-        }
-        // Select the links from the table. We LEFT JOIN since 
-        // there is no match in {menu_router} for an external link
-        $links_result = db_query("
-          SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
-          FROM {menu_links} ml LEFT JOIN {menu_router} m ON m.path = ml.router_path
-          WHERE ml.menu_name = '%s' AND ml.plid IN (". $placeholders .")
-          ORDER BY p1 ASC, p2 ASC, p3 ASC, p4 ASC, p5 ASC, p6 ASC, p7 ASC, p8 ASC, p9 ASC", $args);
-        $links = array();
-        while($link = db_fetch_array($links_result)) {
-          $links[] = $link;
-        }
-        // And recursively build the tree.
-        $data['tree'] = menu_tree_data($links, $parents);
-        $data['node_links'] = array();
-        menu_tree_collect_node_links($data['tree'], $data['node_links']);
-        // Cache the data, if it is not already in the cache.
-        $tree_cid = _menu_tree_cid($menu_name, $data);
-        if (!cache_get($tree_cid, 'cache_menu')) {
-          cache_set($tree_cid, $data, 'cache_menu');
-        }
-        // Cache the cid of the (shared) data using the page-specific cid.
-        cache_set($cid, $tree_cid, 'cache_menu');
-      }
-      // Check access for the current user to each item in the tree.
-      menu_tree_check_access($data['tree'], $data['node_links']);
-      $tree[$cid] = $data['tree'];
     }
-    return $tree[$cid];
+
+    if (!$mlids) {
+      // If user has no access to current menu router item or menu item link is
+      // not in the menu, return top-level menu links.
+      $mlids = func_get_cache_bootstrap('_menu_tree_page_data', $menu_name, array('0'));
+      $parents = array('0');
+    }
+
+    // Get menu router links for mlids from the menu cache.
+    $menu_mlid_index = func_get_cache_bootstrap('_menu_mlid_index', $menu_name);
+    $links = array();
+    foreach ($mlids as $mlid) {
+      if (isset($menu_mlid_index[$mlid])) {
+        $links[] = $menu_mlid_index[$mlid];
+      }
+    }
+
+    // And recursively build the tree.
+    $data['tree'] = menu_tree_data($links, $parents);
+    $data['node_links'] = array();
+    menu_tree_collect_node_links($data['tree'], $data['node_links']);
+
+    // Check access for the current user to each item in the tree.
+    menu_tree_check_access($data['tree'], $data['node_links']);
+
+    return $data['tree'];
   }
 
   return array();
+}
+
+/**
+ * Memoize helper for menu_tree_page_data().
+ * Prepare cache for the only existing menu links.
+ *
+ * @param $menu_name string
+ *   menu machine name, e.g. "navigation"
+ * @param $parents array
+ *   list of expanded parents
+ * @return array
+ *   list of visible mlids
+ * @see menu_tree_page_data()
+ */
+function _menu_tree_page_data($menu_name, $parents = NULL) {
+  $static = &drupal_static('menu_tree_page_data', array());
+  if (empty($parents)) {
+    $parents = array();
+  }
+  // We always want all the top-level links with plid == 0.
+  $parents[] = '0';
+
+  // Use array_values() so that the indices are numeric for array_merge().
+  $args = $parents = array_unique(array_values($parents));
+  $placeholders = implode(', ', array_fill(0, count($args), '%d'));
+  $expanded = variable_get('menu_expanded', array());
+  // Check whether the current menu has any links set to be expanded.
+  if (in_array($menu_name, $expanded)) {
+    // Collect all the links set to be expanded, and then add all of
+    // their children to the list as well.
+    do {
+      $result = db_query("SELECT mlid FROM {menu_links} WHERE menu_name = '%s' AND expanded = 1 AND has_children = 1 AND plid IN (". $placeholders .') AND mlid NOT IN ('. $placeholders .')', array_merge(array($menu_name), $args, $args));
+      $num_rows = FALSE;
+      while ($item = db_fetch_array($result)) {
+        $args[] = $item['mlid'];
+        $parents[] = $item['mlid'];
+        $num_rows = TRUE;
+      }
+      $placeholders = implode(', ', array_fill(0, count($args), '%d'));
+    } while ($num_rows);
+  }
+
+  if (empty($static[$menu_name])) {
+    // Prepare static cache for menu to minimize database calls.
+    $result = db_query("SELECT mlid, plid, p1, p2, p3, p4, p5, p6, p7, p8, p9 FROM {menu_links} ml LEFT JOIN {menu_router} m ON m.path = ml.router_path
+    WHERE ml.menu_name = '%s'", $menu_name);
+    $static[$menu_name] = array();
+    $cache = &$static[$menu_name];
+    while ($item = db_fetch_array($result)) {
+      $plid = $item['plid'];
+      if (!isset($cache[$plid])) {
+        $cache[$plid] = array();
+      }
+      $cache[$plid][] = array(
+        'mlid' => $item['mlid'],
+        // Parents string for correct sorting.
+        'parents' => array($item['p1'], $item['p2'], $item['p3'], $item['p4'], $item['p5'], $item['p6'], $item['p7'], $item['p9'], $item['p9']),
+      );
+    }
+  }
+  else {
+    // Get results from prepared cache.
+    $cache = &$static[$menu_name];
+  }
+
+  $items = array();
+  foreach ($cache as $plid => $cached_items) {
+    if (in_array($plid, $parents)) {
+      $items = array_merge($items, $cached_items);
+    }
+  }
+
+  // Make programmatically sorting as the replace of database sorting (p1 ASC, p2 ASC, ...).
+  usort($items, '_menu_tree_page_data_sort');
+
+  // Collect mlids only.
+  $mlids = array();
+  foreach ($items as $item) {
+    $mlids[] = $item['mlid'];
+  }
+
+  return $mlids;
+}
+
+function _menu_tree_page_data_sort($a, $b) {
+  foreach ($a['parents'] as $i => $parent) {
+    if ($b['parents'][$i] < $parent) {
+      return 1;
+    }
+    elseif ($b['parents'][$i] > $parent) {
+      return -1;
+    }
+    if ($parent == 0 && $b['parents'][$i] == 0) {
+      // All other parents are 0. No need for further checks.
+      break;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Create index of menu links for menu indexed with link path.
+ * Memoize helper method.
+ *
+ * @param $menu_name string
+ *   menu machine name, e.g. "navigation"
+ * @return array
+ *   assoc array containing link paths as keys and link items as values.
+ * @see menu_tree_page_data()
+ */
+function _menu_links_index($menu_name) {
+  $links_result = db_query("SELECT * FROM {menu_links} WHERE menu_name = '%s'", $menu_name);
+  $links = array();
+  while($link = db_fetch_array($links_result)) {
+    $links[$link['link_path']] = $link;
+  }
+  return $links;
+}
+
+/**
+ * Create index of menu links for menu indexed with mlids.
+ * Memoize helper method.
+ *
+ * @param $menu_name string
+ *   menu machine name, e.g. "navigation"
+ * @return array
+ *   assoc array containing mlids as keys and link items plus router info as values.
+ * @see menu_tree_page_data()
+ */
+function _menu_mlid_index($menu_name) {
+  $links_result = db_query("
+    SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
+      FROM {menu_links} ml LEFT JOIN {menu_router} m ON m.path = ml.router_path
+      WHERE ml.menu_name = '%s' ORDER BY p1 ASC, p2 ASC, p3 ASC, p4 ASC, p5 ASC, p6 ASC, p7 ASC, p8 ASC, p9 ASC", $menu_name);
+  $links = array();
+  while($link = db_fetch_array($links_result)) {
+    $links[$link['mlid']] = $link;
+  }
+  return $links;
 }
 
 /**
@@ -1425,7 +1529,7 @@ function menu_local_tasks($level = 0, $return_root = FALSE) {
     $__items = array();
 
     /// Get a bunch of menu elements and find those which tab_root is equal to current router_item
-    $descendants = func_get_cache_bootstrap('_menu_get_items', arg(0));
+    $descendants = func_get_cache_bootstrap('_menu_router_index', arg(0));
     foreach($descendants as $path => $item) {
       if($item['tab_root'] == $router_item['tab_root']) {
         $__items[] = $item;
@@ -1798,8 +1902,8 @@ function menu_cache_clear($menu_name = 'navigation') {
   // Also clear the menu system static caches.
   menu_reset_static_cache();
 
-  // Rebuild memoized results.
-  func_clear_cache_func_bootstrap('cache_menu');
+  func_clear_cache_func_bootstrap('_menu_links_index', $menu_name);
+  func_clear_cache_func_bootstrap('_menu_mlid_index', $menu_name);
 }
 
 /**
@@ -1807,9 +1911,7 @@ function menu_cache_clear($menu_name = 'navigation') {
  * might have been made to the router items or menu links.
  */
 function menu_cache_clear_all() {
-  cache_clear_all('*', 'cache_menu', TRUE);
-  // Rebuild memoized results.
-  func_clear_cache_func_bootstrap('cache_menu');
+  //cache_clear_all('*', 'cache_menu', TRUE);
 }
 
 /**
@@ -1946,7 +2048,7 @@ function _menu_navigation_links_rebuild($menu) {
         $item['updated'] = $existing_item['updated'];
       }
       if (!$existing_item || !$existing_item['customized']) {
-        menu_link_save($item);
+        menu_link_save($item, TRUE);
       }
     }
   }
@@ -1970,6 +2072,11 @@ function _menu_navigation_links_rebuild($menu) {
   while ($item = db_fetch_array($result)) {
     _menu_delete_item($item, TRUE);
   }
+
+  //
+  func_clear_cache_func_bootstrap('_menu_links_index');
+  func_clear_cache_func_bootstrap('_menu_mlid_index');
+  func_clear_cache_func_bootstrap('_menu_tree_page_data');
 }
 
 /**
@@ -2017,6 +2124,11 @@ function _menu_delete_item($item, $force = FALSE) {
     _menu_update_parental_status($item);
     menu_cache_clear($item['menu_name']);
     _menu_clear_page_cache();
+    _menu_item_clear_cache($item, TRUE);
+    if ($item['plid'] > 0) {
+      $parent = db_fetch_array(db_query("SELECT * FROM {menu_links} WHERE mlid = %d", $item['plid']));
+      _menu_item_clear_cache($parent);
+    }
   }
 }
 
@@ -2038,7 +2150,7 @@ function _menu_delete_item($item, $force = FALSE) {
  *   The mlid of the saved menu link, or FALSE if the menu link could not be 
  *   saved.
  */
-function menu_link_save(&$item) {
+function menu_link_save(&$item, $bulk = FALSE) {
 
   // Get the router if it's already in memory. $menu will be NULL, unless this
   // is during a menu rebuild
@@ -2181,13 +2293,24 @@ function menu_link_save(&$item) {
     $item['module'],  $item['link_title'], serialize($item['options']), $item['customized'], $item['is_system'], $item['mlid']);
   // Check the has_children status of the parent.
   _menu_update_parental_status($item);
-  menu_cache_clear($menu_name);
-  if ($existing_item && $menu_name != $existing_item['menu_name']) {
-    menu_cache_clear($existing_item['menu_name']);
-  }
 
-  _menu_clear_page_cache();
-  func_clear_cache_func_bootstrap('cache_menu');
+  if (!$bulk) {
+    menu_cache_clear($menu_name);
+    _menu_item_clear_cache($item);
+
+    if ($parent) {
+      _menu_item_clear_cache($parent);
+    }
+    func_clear_cache_func_bootstrap('_menu_tree_page_data', $menu_name);
+
+    if ($existing_item && $menu_name != $existing_item['menu_name']) {
+      menu_cache_clear($existing_item['menu_name']);
+      _menu_item_clear_cache($parent);
+      func_clear_cache_func_bootstrap('_menu_tree_page_data', $existing_item['menu_name']);
+    }
+
+    _menu_clear_page_cache();
+  }
   return $item['mlid'];
 }
 
@@ -2210,6 +2333,49 @@ function _menu_clear_page_cache() {
     // Keep track of which menus have expanded items.
     drupal_register_shutdown_function('_menu_set_expanded_menus');
     $cache_cleared = 2;
+  }
+}
+
+/**
+ * Helper function to clear single menu link item.
+ *
+ * @param $item array
+ *   array object of menu link item
+ * @param $is_delete boolean
+ *   TRUE for deletion, FALSE for edit and add
+ */
+function _menu_item_clear_cache($item, $is_delete = FALSE) {
+  // Determine first argument for menu router index.
+  if (isset($item['parts'])) {
+    $first_arg = reset($item['parts']);
+  }
+  else {
+    $path = isset($item['link_path'])? $item['link_path']: (isset($item['path'])? $item['path']: $item['router_path']);
+    $first_arg = current(explode('/', $path));
+  }
+
+  // Rebuild menu router index for the first argument of the item link.
+  func_clear_cache_func_bootstrap('_menu_router_index', $first_arg);
+
+  if ($is_delete) {
+    // Remove link path from the links index.
+    func_alter_cache_bootstrap('_menu_links_index', array($item['link_path'] => NULL), $item['menu_name']);
+    func_alter_cache_bootstrap('_menu_mlid_index', array($item['mlid'] => NULL), $item['menu_name']);
+  }
+  else {
+    if (isset($item['link_path'])) {
+      // Altering links index cache. Save CPU and DB requests by rebuilding
+      // only desired menu item.
+      func_alter_cache_bootstrap('_menu_links_index', array($item['link_path'] => $item), $item['menu_name']);
+    }
+
+    $menu_link = db_fetch_array(db_query("SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
+      FROM {menu_links} ml LEFT JOIN {menu_router} m ON m.path = ml.router_path
+      WHERE mlid = %d", $item['mlid']));
+
+    // Altering links menu ids cache. Save CPU and DB requests by rebuilding
+    // only desired menu item.
+    func_alter_cache_bootstrap('_menu_mlid_index', array($item['mlid'] => $menu_link), $item['menu_name']);
   }
 }
 
@@ -2612,6 +2778,8 @@ function _menu_router_build($callbacks) {
   $masks = array_keys($masks);
   rsort($masks);
   variable_set('menu_masks', $masks);
+
+  func_clear_cache_func_bootstrap('_menu_router_index');
 
   return $menu;
 }

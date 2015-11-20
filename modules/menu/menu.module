@@ -195,30 +195,21 @@ function menu_overview_title($menu) {
  *   Array defining the custom menu, or FALSE if the menu doesn't exist.
  */
 function menu_load($menu_name) {
-  $all_menus = menu_load_all();
+  $all_menus = func_get_cache_bootstrap('menu_load_all');
   return isset($all_menus[$menu_name]) ? $all_menus[$menu_name] : FALSE;
 }
 
 /**
- * Load all custom menu data. Backport from D7.
+ * Load all custom menu data. Memoized function helper.
  *
  * @return
  *   Array of custom menu data.
  */
 function menu_load_all() {
-  $custom_menus = &drupal_static(__FUNCTION__);
-  if (!isset($custom_menus)) {
-    if ($cached = cache_get('menu_custom', 'cache_menu')) {
-      $custom_menus = $cached->data;
-    }
-    else {
-      $custom_menus = array();
-      $result = db_query('SELECT * FROM {menu_custom}');
-      while ($item = db_fetch_array($result)) {
-        $custom_menus[$item['menu_name']] = $item;
-      }
-      cache_set('menu_custom', $custom_menus, 'cache_menu');
-    }
+  $custom_menus = array();
+  $result = db_query('SELECT * FROM {menu_custom}');
+  while ($item = db_fetch_array($result)) {
+    $custom_menus[$item['menu_name']] = $item;
   }
   return $custom_menus;
 }
@@ -297,7 +288,7 @@ function menu_reset_item($item) {
  * Implementation of hook_block().
  */
 function menu_block($op = 'list', $delta = 0) {
-  $menus = menu_get_menus();
+  $menus = func_get_cache_bootstrap('menu_get_menus', TRUE);
   // The Navigation menu is handled by the user module.
   unset($menus['navigation']);
   if ($op == 'list') {
@@ -425,7 +416,7 @@ function menu_form_alter(&$form, $form_state, $form_id) {
       '#required' => FALSE,
     );
     // Generate a list of possible parents (not including this item or descendants).
-    $options = menu_parent_options(menu_get_menus(), $item);
+    $options = menu_parent_options(func_get_cache_bootstrap('menu_get_menus', TRUE), $item);
     $default = $item['menu_name'] .':'. $item['plid'];
     if (!isset($options[$default])) {
       $default = 'primary-links:0';

@@ -164,14 +164,14 @@ function _init_theme($theme, $base_theme = array(), $registry_callback = '_theme
   // Initialize the theme.
   if (isset($theme->engine)) {
     // Include the engine.
-    include_once './'. $theme->owner;
+    include_once DRUPAL_ROOT . '/' . $theme->owner;
 
     $theme_engine = $theme->engine;
-    if (function_exists($theme_engine .'_init')) {
+    if (function_exists($theme_engine . '_init')) {
       foreach ($base_theme as $base) {
-        call_user_func($theme_engine .'_init', $base);
+        call_user_func($theme_engine . '_init', $base);
       }
-      call_user_func($theme_engine .'_init', $theme);
+      call_user_func($theme_engine . '_init', $theme);
     }
   }
   else {
@@ -179,12 +179,12 @@ function _init_theme($theme, $base_theme = array(), $registry_callback = '_theme
     foreach ($base_theme as $base) {
       // Include the theme file or the engine.
       if (!empty($base->owner)) {
-        include_once './'. $base->owner;
+        include_once DRUPAL_ROOT . '/' . $base->owner;
       }
     }
     // and our theme gets one too.
     if (!empty($theme->owner)) {
-      include_once './'. $theme->owner;
+      include_once DRUPAL_ROOT . '/' . $theme->owner;
     }
   }
 

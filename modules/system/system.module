@@ -2429,10 +2429,29 @@ function system_cache_setters() {
     '_language_list' => array(
       'bin' => 'cache_bootstrap',
     ),
-    '_menu_get_items' => array(
+    '_menu_router_index' => array(
       'bin' => 'cache_menu',
       'lifetime' => 0,
       'args' => array('!menu_ancestor'),
+    ),
+    '_menu_links_index' => array(
+      'bin' => 'cache_menu',
+      'args' => array('!menu_name'),
+    ),
+    '_menu_mlid_index' => array(
+      'bin' => 'cache_menu',
+      'args' => array('!menu_name'),
+    ),
+    '_menu_tree_page_data' => array(
+      'bin' => 'cache_menu',
+      'args' => array('!menu_name', '!menu_parents_ways'),
+    ),
+    'menu_load_all' => array(
+      'bin' => 'cache_menu',
+    ),
+    'menu_get_menus' => array(
+      'bin' => 'cache_menu',
+      'args' => array(array(0, 1)),
     ),
   );
 }
@@ -2441,7 +2460,7 @@ function system_cache_setters() {
  * Implementation of hook_cache_tokens().
  *
  */
-function system_cache_tokens($op, $token = NULL) {
+function system_cache_tokens($op, $token = NULL, $parent_token = NULL) {
   switch($op) {
     case 'list':
       return array(
@@ -2450,6 +2469,15 @@ function system_cache_tokens($op, $token = NULL) {
         '!system_object_type' => 'List of available system object types. Default is "module" and "theme".',
         '!langcode' => 'List of langcodes for enabled languages',
         '!menu_ancestor' => 'All menu router first-level items like "admin" or "user"',
+        '!menu_name' => 'All available menu machine names',
+        '!menu_links' => array(
+          'parent' => '!menu_name',
+          'title' => 'Entire menu links index.',
+        ),
+        '!menu_parents_ways' => array(
+          'parent' => '!menu_name',
+          'title' => 'All possible ways in menu. Depends on !menu_name.',
+        ),
       );
     case 'view':
       switch($token) {
@@ -2498,7 +2526,33 @@ function system_cache_tokens($op, $token = NULL) {
             }
           }
           return $ancestors;
-          break;
+        case '!menu_name':
+          $menu_names = array('primary-links', 'secondary-links');
+          $names_result = db_query("SELECT DISTINCT(menu_name) AS name FROM {menu_links}");
+          while ($menu = db_fetch_array($names_result)) {
+            $menu_names[] = $menu['name'];
+          }
+          return array_unique($menu_names);
+        case '!menu_parents_ways':
+          // First item is always menu root.
+          $result = array();
+          $items_result = db_query("SELECT p1, p2, p3, p4, p5, p6, p7, p8 FROM {menu_links} WHERE menu_name = '%s'", $parent_token);
+          while ($item = db_fetch_array($items_result)) {
+            $parents_way = array_filter(array($item['p1'], $item['p2'], $item['p3'], $item['p4'], $item['p5'], $item['p6'], $item['p7'], $item['p8']));
+            // Last parent is always mlid. Remove it.
+            //array_pop($parents_way);
+            if (count($parents_way) > 0 && !in_array($parents_way, $result)) {
+              $result[] = $parents_way;
+            }
+          }
+
+          if (empty($result)) {
+            $result = array('0');
+          }
+          else {
+            array_unshift($result, array('0'));
+          }
+          return $result;
       }
       break;
   }

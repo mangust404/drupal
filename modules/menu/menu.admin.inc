@@ -307,7 +307,7 @@ function menu_edit_item(&$form_state, $type, $item, $menu) {
   );
 
   // Generate a list of possible parents (not including this item or descendants).
-  $options = menu_parent_options(menu_get_menus(), $item);
+  $options = menu_parent_options(func_get_cache_bootstrap('menu_get_menus', TRUE), $item);
   $default = $item['menu_name'] .':'. $item['plid'];
   if (!isset($options[$default])) {
     $default = 'navigation:0';
@@ -499,9 +499,10 @@ function menu_delete_menu_confirm_submit($form, &$form_state) {
   // Delete all the blocks for this menu.
   db_query("DELETE FROM {blocks} WHERE module = 'menu' AND delta = '%s'", $menu['menu_name']);
   db_query("DELETE FROM {blocks_roles} WHERE module = 'menu' AND delta = '%s'", $menu['menu_name']);
-  menu_cache_clear_all();
   cache_clear_all();
   func_clear_cache_bin('cache_block');
+  func_clear_cache_func_bootstrap('menu_load_all');
+  func_clear_cache_func_bootstrap('menu_get_menus');
   $t_args = array('%title' => $menu['title']);
   drupal_set_message(t('The custom menu %title has been deleted.', $t_args));
   watchdog('menu', 'Deleted custom menu %title and all its menu items.', $t_args, WATCHDOG_NOTICE);
@@ -552,7 +553,8 @@ function menu_edit_menu_submit($form, &$form_state) {
     }
   }
 
-  cache_clear_all('menu_custom', 'cache_menu');
+  func_clear_cache_func_bootstrap('menu_load_all');
+  func_clear_cache_func_bootstrap('menu_get_menus');
 
   $form_state['redirect'] = $path . $menu['menu_name'];
 }
@@ -617,7 +619,7 @@ function menu_configure() {
     '#value' => t('The menu module allows on-the-fly creation of menu links in the content authoring forms. The following option sets the default menu in which a new link will be added.'),
   );
 
-  $menu_options = menu_get_menus();
+  $menu_options = func_get_cache_bootstrap('menu_get_menus', TRUE);
   $form['menu_default_node_menu'] = array(
     '#type' => 'select',
     '#title' => t('Default menu for content'),

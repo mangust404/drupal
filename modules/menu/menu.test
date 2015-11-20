@@ -171,8 +171,7 @@ class MenuTestCase extends DrupalWebTestCase {
     $this->assertResponse(200);
     $this->assertText(t('The block settings have been updated.'), 'Custom menu block was enabled');
 
-    drupal_static_reset('menu_load_all');
-    cache_clear_all('menu_custom', 'cache_menu');
+    func_clear_cache_func_bootstrap('menu_load_all');
     return menu_load($menu_name);
   }
 
@@ -189,8 +188,7 @@ class MenuTestCase extends DrupalWebTestCase {
     $this->drupalPost("admin/build/menu-customize/$menu_name/delete", array(), t('Delete'));
     $this->assertResponse(200);
     $this->assertRaw(t('The custom menu %title has been deleted.', array('%title' => $title)), 'Custom menu was deleted');
-    drupal_static_reset('menu_load_all');
-    cache_clear_all('menu_custom', 'cache_menu');
+    func_clear_cache_func_bootstrap('menu_load_all');
     $this->assertFalse(menu_load($menu_name), 'Custom menu was deleted');
     // Test if all menu links associated to the menu were removed from database.
     $result = db_result(db_query("SELECT menu_name FROM {menu_links} WHERE menu_name = '%s'", $menu_name));
@@ -203,11 +201,11 @@ class MenuTestCase extends DrupalWebTestCase {
    */
   function doMenuTests($menu_name = 'navigation') {
     // Add nodes to use as links for menu links.
-    $node1 = $this->drupalCreateNode(array('type' => 'article'));
-    $node2 = $this->drupalCreateNode(array('type' => 'article'));
-    $node3 = $this->drupalCreateNode(array('type' => 'article'));
-    $node4 = $this->drupalCreateNode(array('type' => 'article'));
-    $node5 = $this->drupalCreateNode(array('type' => 'article'));
+    $node1 = $this->drupalCreateNode(array('type' => 'page'));
+    $node2 = $this->drupalCreateNode(array('type' => 'page'));
+    $node3 = $this->drupalCreateNode(array('type' => 'page'));
+    $node4 = $this->drupalCreateNode(array('type' => 'page'));
+    $node5 = $this->drupalCreateNode(array('type' => 'page'));
 
     // Add menu links.
     $item1 = $this->addMenuLink(0, 'node/' . $node1->nid, $menu_name);
@@ -291,13 +289,6 @@ class MenuTestCase extends DrupalWebTestCase {
    */
   function addMenuLink($plid = 0, $link = '<front>', $menu_name = 'navigation', $expanded = TRUE) {
     // View add menu link page.
-    if(empty($menu_name)) {
-      $db = debug_backtrace();
-      for($i = 0; $i < 4; $i++) {
-        print $db[$i]['file'] . ':' . $db[$i]['line'] . "\n";
-      }
-      exit;
-    }
     $this->drupalGet("admin/build/menu-customize/$menu_name/add");
     $this->assertResponse(200);
 
