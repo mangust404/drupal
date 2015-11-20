@@ -816,6 +816,27 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     $this->assertEqual(trim($styles), $css_preprocessed, 'Rendering preprocessed inline CSS adds it to the page.');
   }
 
+}
+
+/**
+ * Test the Drupal CSS system.
+ * Second part of the CascadingStylesheetsTestCase.
+ */
+class CascadingStylesheetsTestCasePart2 extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Cascading stylesheets (part 2)',
+      'description' => 'Tests adding various cascading stylesheets to the page (part 2).',
+      'group' => 'System',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('php', 'locale', 'common_test');
+    // Reset drupal_add_css() before each test.
+    drupal_static_reset('drupal_add_css');
+  }
+
   /**
    * Tests rendering inline stylesheets with preprocessing on.
    * Same as above but with D6 syntax
