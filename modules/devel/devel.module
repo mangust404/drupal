@@ -431,7 +431,7 @@ function devel_silent() {
   // isset($_GET['q']) is needed on IIS when calling the front page. q is not set.
   // Don't interfere with private files/images.
   return
-    devel_verify_cli() ||
+    drupal_is_cli() ||
     isset($GLOBALS['devel_shutdown']) ||
     strstr($_SERVER['PHP_SELF'], 'update.php') ||
     (isset($_GET['q']) && (
@@ -442,7 +442,8 @@ function devel_silent() {
 }
 
 function devel_xhprof_enable() {
-  if (extension_loaded('xhprof') && variable_get('devel_xhprof_enabled', FALSE)) {
+  global $current_test_class;
+  if (!empty($current_test_class) && extension_loaded('xhprof') && variable_get('devel_xhprof_enabled', FALSE)) {
     if (($path = variable_get('devel_xhprof_directory', '')) &&
         (include_once $path . '/xhprof_lib/utils/xhprof_lib.php') &&
         (include_once $path . '/xhprof_lib/utils/xhprof_runs.php')) {
@@ -832,13 +833,6 @@ function devel_exit($destination = NULL) {
   }
 }
 
-// Borrowed from Drupal 7 - drupal_is_cli().
-function devel_verify_cli() {
-  return ((!isset($_SERVER['SERVER_SOFTWARE']) || $_SERVER['SERVER_SOFTWARE'] == 'PHP CLI')
-      && (php_sapi_name() == 'cli' || (is_numeric($_SERVER['argc']) && $_SERVER['argc'] > 0)));
-}
-
-
 /**
  * See devel_start() which registers this function as a shutdown function.
  */
@@ -864,7 +858,12 @@ function devel_shutdown_xhprof_drush() {
  * See devel_shutdown() which registers this function as a shutdown function. Displays developer information in the footer.
  */
 function devel_shutdown_real() {
-  global $queries, $cache_queries, $memory_init, $user;
+  global $current_test_class, $queries, $cache_queries, $memory_init, $user;
+  if (!empty($current_test_class)) {
+    // No need for devel console for testing.
+    return;
+  }
+
   $output = $txt = '';
   $tabs = array();
 
