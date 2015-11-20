@@ -1468,7 +1468,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
   public static function getInfo() {
     return array(
       'name' => 'JavaScript',
-      'description' => 'Tests the JavaScript system.',
+      'description' => 'Tests the JavaScript system (part 1).',
       'group' => 'System'
     );
   }
@@ -1728,6 +1728,15 @@ class JavaScriptTestCase extends DrupalWebTestCase {
   }
 
   /**
+   * Resets static variables related to adding JavaScript to a page.
+   */
+  function resetStaticVariables() {
+    drupal_static_reset('drupal_add_js');
+    drupal_static_reset('drupal_add_library');
+    drupal_static_reset('drupal_get_library');
+  }
+
+  /**
    * Test drupal_add_js() sets preproccess to false when cache is set to false.
    */
   function testNoCache() {
@@ -1741,6 +1750,45 @@ class JavaScriptTestCase extends DrupalWebTestCase {
   function testDifferentGroup() {
     $javascript = drupal_add_js('misc/collapse.js', array('group' => JS_THEME));
     $this->assertEqual($javascript['misc/collapse.js']['group'], JS_THEME, 'Adding a JavaScript file with a different group caches the given group.');
+  }
+}
+
+/**
+ * Tests for the JavaScript system (part 2).
+ * Test cases were moved to this class because 20+ test cases for a single test
+ * class is too much. PHP is hitting the memory limit.
+ */
+class JavaScriptTestCasePart2 extends DrupalWebTestCase {
+  /**
+   * Store configured value for JavaScript preprocessing.
+   */
+  protected $preprocess_js = NULL;
+
+  public static function getInfo() {
+    return array(
+      'name' => 'JavaScript',
+      'description' => 'Tests the JavaScript system (part 2).',
+      'group' => 'System'
+    );
+  }
+
+  function setUp() {
+    // Enable Locale and SimpleTest in the test environment.
+    parent::setUp('locale', 'simpletest', 'common_test');
+
+    // Disable preprocessing
+    $this->preprocess_js = variable_get('preprocess_js', 0);
+    variable_set('preprocess_js', 0);
+
+    // Reset drupal_add_js() and drupal_add_library() statics before each test.
+    drupal_static_reset('drupal_add_js');
+    drupal_static_reset('drupal_add_library');
+  }
+
+  function tearDown() {
+    // Restore configured value for JavaScript preprocessing.
+    variable_set('preprocess_js', $this->preprocess_js);
+    parent::tearDown();
   }
 
   /**
