@@ -3790,7 +3790,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL, $skip_alter = FALS
         $processed[$index++] = theme('html_tag', $js_element);
         break;
 
-      case 'file':
+      case 'file': case 'theme':
         $js_element = $element;
         if (!$item['preprocess'] || !$preprocess_js) {
           if ($item['defer']) {
